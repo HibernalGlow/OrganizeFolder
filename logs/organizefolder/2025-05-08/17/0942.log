@@ -1,2 +1,0 @@
-2025-05-08 17:09:42 | ℹ️ INFO     | __main__:setup_logger:67 - 日志系统已初始化，应用名称: organizefolder
-2025-05-08 17:09:42 | ❌ ERROR    | __main__:<module>:308 - 发生错误: '_ArgumentGroup' object has no attribute 'add'
