@@ -35,7 +35,9 @@ dev = [
 
 [project.scripts]
 organizef = "organizef.__main__:main"
-
+cleanf = "cleanf.__main__:main"
+dissolvef = "dissolvef.__main__:main"
+migratef = "migratef.__main__:main"
 [build-system]
 requires = ["setuptools>=42.0", "wheel"]
 build-backend = "setuptools.build_meta"
