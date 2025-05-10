@@ -1,14 +1,21 @@
 """
-cleaner 包的命令行入口点，使其能够作为独立的命令行工具运行
+cleaner 包的命令行入口点，使用 Typer 实现命令行界面
 """
 import sys
-import argparse
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Optional, Tuple
 import logging
+import typer
+from rich.console import Console
 
 from .empty import remove_empty_folders
 from .backup import remove_backup_and_temp
+
+# 创建 Typer 应用
+app = typer.Typer(help="文件清理工具 - 删除空文件夹和备份文件")
+
+# 创建 Rich Console
+console = Console()
 
 # 配置日志
 logging.basicConfig(
@@ -200,107 +207,106 @@ def run_interactive() -> None:
     input()
     return True
 
-def main():
-    """主函数：处理命令行参数并执行相应操作"""
-    parser = argparse.ArgumentParser(description='文件清理工具')
-    parser.add_argument('paths', nargs='*', help='要处理的路径列表')
-    parser.add_argument('--clipboard', '-c', action='store_true', help='从剪贴板读取路径')
-    parser.add_argument('--interactive', '-i', action='store_true', help='启用交互式界面')
-    
-    # 清理模式
-    group = parser.add_argument_group('清理模式')
-    group.add_argument('--empty', '-e', action='store_true', help='删除空文件夹')
-    group.add_argument('--backup', '-b', action='store_true', help='删除备份文件和临时文件夹')
-    group.add_argument('--all', '-a', action='store_true', help='执行所有清理操作')
-    
-    parser.add_argument('--exclude', help='排除关键词列表，用逗号分隔多个关键词')
-    
-    args = parser.parse_args()
-    
+@app.command()
+def clean(
+    paths: List[Path] = typer.Argument(None, help="要处理的路径列表", exists=True, dir_okay=True, file_okay=False),
+    clipboard: bool = typer.Option(False, "--clipboard", "-c", help="从剪贴板读取路径"),
+    interactive: bool = typer.Option(False, "--interactive", "-i", help="启用交互式界面"),
+    empty: bool = typer.Option(False, "--empty", "-e", help="删除空文件夹"),
+    backup: bool = typer.Option(False, "--backup", "-b", help="删除备份文件和临时文件夹"),
+    all: bool = typer.Option(False, "--all", "-a", help="执行所有清理操作"),
+    exclude: Optional[str] = typer.Option(None, help="排除关键词列表，用逗号分隔多个关键词")
+):
+    """清理文件夹：删除空文件夹和备份文件"""
     # 如果使用交互式界面，或者不带任何参数
-    if args.interactive or (len(sys.argv) == 1):
+    if interactive or (len(sys.argv) == 1):
         if run_interactive():
             return
         # 如果交互式界面失败或返回False，继续使用命令行模式
     
     # 命令行模式
     # 处理清理模式参数
-    remove_empty = args.empty or args.all
-    clean_backup = args.backup or args.all
+    remove_empty = empty or all
+    clean_backup = backup or all
     
     if not (remove_empty or clean_backup):
-        logger.info("提示：未指定任何清理操作，默认执行所有清理操作")
+        typer.echo("提示：未指定任何清理操作，默认执行所有清理操作")
         remove_empty = clean_backup = True
     
     # 获取要处理的路径
-    paths = []
+    path_list = []
     
-    if args.clipboard:
-        paths.extend(get_paths_from_clipboard())
+    if clipboard:
+        path_list.extend(get_paths_from_clipboard())
     
-    if args.paths:
-        for path_str in args.paths:
-            path = Path(path_str.strip('"').strip("'"))
-            if path.exists():
-                paths.append(path)
-            else:
-                logger.warning(f"警告：路径不存在 - {path_str}")
+    if paths:
+        path_list.extend(paths)
     
-    if not paths:
-        logger.info("请输入要处理的文件夹路径，每行一个，输入空行结束:")
+    if not path_list:
+        typer.echo("请输入要处理的文件夹路径，每行一个，输入空行结束:")
         while True:
             try:
-                if line := input().strip():
-                    path = Path(line.strip('"').strip("'"))
-                    if path.exists():
-                        paths.append(path)
-                    else:
-                        logger.warning(f"警告：路径不存在 - {line}")
-                else:
+                line = input().strip()
+                if not line:
                     break
+                
+                path = Path(line.strip('"').strip("'"))
+                if path.exists():
+                    path_list.append(path)
+                else:
+                    typer.echo(f"警告：路径不存在 - {line}", err=True)
             except KeyboardInterrupt:
-                logger.info("\n操作已取消")
+                typer.echo("\n操作已取消")
                 return
     
-    if not paths:
-        logger.warning("未提供任何有效的路径")
-        parser.print_help()
-        return
+    if not path_list:
+        typer.echo("未提供任何有效的路径", err=True)
+        raise typer.Exit(code=1)
     
     # 处理排除关键词
     exclude_keywords = []
-    if args.exclude:
-        exclude_keywords.extend(args.exclude.split(','))
+    if exclude:
+        exclude_keywords.extend(exclude.split(','))
     
     # 处理每个路径
     total_empty_removed = 0
     total_backup_removed = 0
     
-    for path in paths:
-        logger.info(f"\n处理目录: {path}")
+    for path in path_list:
+        typer.echo(f"\n处理目录: {path}")
         
         if remove_empty:
-            logger.info("\n>>> 删除空文件夹...")
+            typer.echo("\n>>> 删除空文件夹...")
             removed, _ = remove_empty_folders(path, exclude_keywords=exclude_keywords, logger=logger)
             total_empty_removed += removed
         
         if clean_backup:
-            logger.info("\n>>> 清理备份文件和临时文件夹...")
+            typer.echo("\n>>> 清理备份文件和临时文件夹...")
             removed, _ = remove_backup_and_temp(path, exclude_keywords=exclude_keywords, logger=logger)
             total_backup_removed += removed
     
-    logger.info("\n清理总结:")
+    typer.echo("\n清理总结:")
     if remove_empty:
-        logger.info(f"- 删除空文件夹: {total_empty_removed} 个")
+        typer.echo(f"- 删除空文件夹: {total_empty_removed} 个")
     if clean_backup:
-        logger.info(f"- 删除备份和临时文件: {total_backup_removed} 个")
-    logger.info(f"- 总计删除: {total_empty_removed + total_backup_removed} 个项目")
+        typer.echo(f"- 删除备份和临时文件: {total_backup_removed} 个")
+    typer.echo(f"- 总计删除: {total_empty_removed + total_backup_removed} 个项目")
+
+def main():
+    """主入口函数"""
+    # 检查是否没有提供任何参数，直接启动交互式界面
+    if len(sys.argv) == 1:
+        if run_interactive():
+            return
+    
+    # 使用 Typer 处理命令行
+    app()
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        logger.info("\n操作已取消")
+        typer.echo("\n操作已取消")
     except Exception as e:
-        logger.error(f"发生错误: {e}")
+        typer.echo(f"发生错误: {e}", err=True)
         sys.exit(1)

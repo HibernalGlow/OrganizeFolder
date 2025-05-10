@@ -1,15 +1,23 @@
+"""
+migrate 包的命令行入口点，使用 Typer 实现命令行界面
+"""
 import re
 import shutil
+import sys
 from pathlib import Path
 import os
+from typing import List, Optional, Tuple, Literal
+import typer
+from enum import Enum
 from rich.console import Console
 from rich.prompt import Prompt, Confirm
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TransferSpeedColumn, FileSizeColumn
-# --- 添加导入 ---
 import concurrent.futures
 from threading import Lock
 import pyperclip
-# --- 导入结束 ---
+
+# 创建 Typer 应用
+app = typer.Typer(help="文件迁移工具 - 保持目录结构迁移文件")
 
 # 初始化 Rich Console
 console = Console()
@@ -279,43 +287,108 @@ def get_target_dir_interactively():
                  target_dir = "" # 清空以便重新输入
     return target_dir
 
+@app.command()
+def migrate(
+    files: List[Path] = typer.Argument(None, help="要迁移的文件列表"),
+    clipboard: bool = typer.Option(False, "--clipboard", "-c", help="从剪贴板读取文件路径"),
+    target: Optional[Path] = typer.Option(None, "--target", "-t", help="目标文件夹路径"),
+    threads: Optional[int] = typer.Option(None, "--threads", help="使用的线程数量"),
+    interactive: bool = typer.Option(False, "--interactive", "-i", help="启用交互式界面"),
+    copy: bool = typer.Option(False, "--copy", help="复制文件而不是移动"),
+    move: bool = typer.Option(True, "--move", help="移动文件而不是复制"),
+):
+    """迁移文件，并保持目录结构"""
+    # 如果指定了交互式界面或没有任何参数，启动交互式界面
+    if interactive or not files:
+        # 交互式获取源文件
+        source_files = get_source_files_interactively()
+        # 交互式获取目标目录
+        if source_files:
+            target_dir = get_target_dir_interactively()
+            # 询问操作类型
+            action_choice = Prompt.ask(
+                "[bold cyan]请选择操作类型 ([i]copy[/i]/[i]move[/i])[/bold cyan]",
+                choices=["copy", "move"],
+                default="move"
+            ).lower()
+            # 询问线程数
+            num_threads = 16
+            # 执行迁移
+            migrate_files_with_structure(source_files, target_dir, max_workers=num_threads, action=action_choice)
+        return
+    
+    # 命令行模式
+    source_files = []
+    
+    # 从剪贴板获取文件路径
+    if clipboard:
+        try:
+            clipboard_content = pyperclip.paste()
+            paths_from_clipboard = [p.strip() for p in clipboard_content.splitlines() if p.strip()]
+            for path_str in paths_from_clipboard:
+                path = Path(path_str)
+                if path.exists() and path.is_file():
+                    source_files.append(str(path))
+        except Exception as e:
+            typer.echo(f"从剪贴板读取路径时出错: {e}", err=True)
+    
+    # 添加命令行指定的文件
+    if files:
+        for file_path in files:
+            if file_path.exists() and file_path.is_file():
+                source_files.append(str(file_path))
+    
+    # 确保有文件要迁移
+    if not source_files:
+        typer.echo("错误: 没有有效的源文件。使用 --interactive 选项启动交互式界面。", err=True)
+        raise typer.Exit(code=1)
+    
+    # 确保有目标目录
+    if not target:
+        typer.echo("错误: 未指定目标目录。请使用 --target 选项指定目标目录。", err=True)
+        raise typer.Exit(code=1)
+    
+    # 确保目标目录有效
+    if not target.exists():
+        try:
+            target.mkdir(parents=True)
+        except Exception as e:
+            typer.echo(f"错误: 无法创建目标目录 {target}: {e}", err=True)
+            raise typer.Exit(code=1)
+    
+    # 确定操作类型
+    action = "copy" if copy else "move"
+    
+    # 执行迁移
+    migrate_files_with_structure(source_files, str(target), max_workers=threads, action=action)
+
+def main():
+    """主入口函数"""
+    # 检查是否没有提供任何参数，直接启动交互式界面
+    if len(sys.argv) == 1:
+        # 交互式获取源文件
+        source_files = get_source_files_interactively()
+        # 交互式获取目标目录
+        if source_files:
+            target_dir = get_target_dir_interactively()
+            # 询问操作类型
+            action_choice = Prompt.ask(
+                "[bold cyan]请选择操作类型 ([i]copy[/i]/[i]move[/i])[/bold cyan]",
+                choices=["copy", "move"],
+                default="move"
+            ).lower()
+            # 执行迁移
+            migrate_files_with_structure(source_files, target_dir, max_workers=16, action=action_choice)
+        return
+    
+    # 使用 Typer 处理命令行
+    app()
+
 if __name__ == "__main__":
-    console.rule("[bold blue]文件结构迁移工具 (交互模式)[/bold blue]")
-
-    # --- 新增：获取操作类型 ---
-    action_choice = Prompt.ask(
-        "[bold cyan]请选择操作类型 ([i]copy[/i]/[i]move[/i])[/bold cyan]",
-        choices=["copy", "move"],
-        default="move"
-    ).lower()
-    # --- 新增结束 ---
-
-    # --- 新增：获取线程数 ---
-    # num_threads_str = Prompt.ask(
-    #     "[bold cyan]请输入要使用的最大线程数（留空则使用 CPU 核心数）[/bold cyan]",
-    #     default=str(os.cpu_count()), # 默认显示 CPU 核心数
-    #     show_default=True
-    # )
-    num_threads_str = "16"
     try:
-        num_threads = int(num_threads_str) if num_threads_str else None
-        if num_threads is not None and num_threads <= 0:
-            console.print("[yellow]线程数必须大于 0，将使用默认值。[/yellow]")
-            num_threads = None
-    except ValueError:
-        console.print("[yellow]无效的线程数输入，将使用默认值。[/yellow]")
-        num_threads = None
-    # --- 新增结束 ---
-
-
-    # 交互式获取源文件
-    source_files = get_source_files_interactively()
-    # 交互式获取目标目录 (移到获取源文件之后，避免取消时也询问)
-    if source_files:
-        target_dir = get_target_dir_interactively()
-        # 执行迁移
-        migrate_files_with_structure(source_files, target_dir, max_workers=num_threads, action=action_choice) # 传递 action
-    else:
-        console.print("[yellow]没有有效的源文件被添加，迁移操作未执行。[/yellow]")
-
-    console.rule("[bold blue]操作结束[/bold blue]")
+        main()
+    except KeyboardInterrupt:
+        console.print("\n[bold red]操作已中断。[/bold red]")
+    except Exception as e:
+        console.print(f"[bold red]发生错误: {e}[/bold red]")
+        sys.exit(1)

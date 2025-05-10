@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import time
+from pathlib import Path
 
 # Rich 组件
 from rich.console import Console
@@ -24,12 +25,12 @@ from rich.rule import Rule
 from rich.tree import Tree
 from rich import box, print
 
-# 导入功能模块
-from ..cleanf import remove_empty_folders, remove_backup_and_temp
-from ..dissolvef import flatten_single_subfolder, release_single_media_folder, dissolve_folder
-from ..dissolvef.media import VIDEO_FORMATS, ARCHIVE_FORMATS
-from ..migratef import migrate_files_with_structure
-from . import __version__
+# 导入功能模块 - 将相对导入改为绝对导入
+from cleanf import remove_empty_folders, remove_backup_and_temp
+from dissolvef import flatten_single_subfolder, release_single_media_folder, dissolve_folder
+from dissolvef.media import VIDEO_FORMATS, ARCHIVE_FORMATS
+from migratef import migrate_files_with_structure
+from organizef import __version__
 
 # 创建控制台
 console = Console()
@@ -41,8 +42,7 @@ def set_preview_mode(mode: bool) -> None:
     """设置是否为预览模式"""
     global preview_mode
     preview_mode = mode
-
-
+    
 def get_paths_from_clipboard() -> List[Path]:
     """从剪贴板读取多行路径"""
     paths = []
