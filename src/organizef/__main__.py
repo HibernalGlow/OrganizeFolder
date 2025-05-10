@@ -51,7 +51,7 @@ def clean_main(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
         try:
             # 导入 cleanf 子包的 app
-            from src.cleanf.__main__ import app as clean_app
+            from cleanf.__main__ import app as clean_app
             typer.echo("正在执行清理操作...")
             clean_app()
         except ImportError as e:
@@ -64,7 +64,7 @@ def dissolve_main(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
         try:
             # 导入 dissolvef 子包的 app
-            from src.dissolvef.__main__ import app as dissolve_app
+            from dissolvef.__main__ import app as dissolve_app
             typer.echo("正在执行解散嵌套文件夹操作...")
             dissolve_app()
         except ImportError as e:

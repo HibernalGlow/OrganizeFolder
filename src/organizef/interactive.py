@@ -536,13 +536,73 @@ def show_welcome() -> None:
 
 
 def run_interactive() -> None:
-    """运行交互式界面"""
+    """运行交互式界面 - 仅作为中转，显示子包选项"""
     # 检查依赖
     check_requirements()
     
     # 显示欢迎信息
     show_welcome()
     
+    # 显示子包选项
+    console.print("\n[bold blue]== 请选择要使用的功能 ==[/bold blue]")
+    
+    table = Table(title="可用功能模块")
+    table.add_column("序号", style="cyan", width=5)
+    table.add_column("功能", style="green")
+    table.add_column("说明", style="magenta")
+    
+    table.add_row("1", "交互式界面", "使用完整的交互式界面进行操作")
+    table.add_row("2", "清理功能", "删除空文件夹和备份文件")
+    table.add_row("3", "解散功能", "解散嵌套文件夹")
+    table.add_row("4", "迁移功能", "迁移文件")
+    table.add_row("5", "退出程序", "退出 OrganizeFolder")
+    
+    console.print(table)
+    
+    # 获取用户选择
+    choice = Prompt.ask("请选择功能", choices=["1", "2", "3", "4", "5"], default="4")
+    
+    if choice == "1":
+        # 进入完整的交互式界面
+        run_full_interactive()
+    elif choice == "2":
+        # 运行清理功能
+        console.print("\n[cyan]启动清理功能...[/cyan]")
+        try:
+            from cleanf.__main__ import app as clean_app
+            clean_app()
+        except ImportError as e:
+            console.print(f"[red]错误：无法导入清理模块: {e}[/red]")
+    elif choice == "3":
+        # 运行解散功能
+        console.print("\n[cyan]启动解散功能...[/cyan]")
+        try:
+            from dissolvef.__main__ import app as dissolve_app
+            dissolve_app()
+        except ImportError as e:
+            console.print(f"[red]错误：无法导入解散模块: {e}[/red]")
+    elif choice == "4":
+        # 运行迁移功能
+        console.print("\n[cyan]启动迁移功能...[/cyan]")
+        try:
+            from migratef.__main__ import app as migrate_app
+            migrate_app()
+        except ImportError as e:
+            console.print(f"[red]错误：无法导入迁移模块: {e}[/red]")
+    elif choice == "5":
+        # 退出程序
+        console.print("\n[bold green]感谢使用 OrganizeFolder![/bold green]")
+        return
+    
+    # 询问是否返回主菜单
+    if Confirm.ask("\n是否返回主菜单?", default=True):
+        run_interactive()
+    else:
+        console.print("\n[bold green]感谢使用 OrganizeFolder![/bold green]")
+
+
+def run_full_interactive() -> None:
+    """运行完整的交互式界面"""
     continue_loop = True
     while continue_loop:
         # 选择路径
