@@ -43,10 +43,7 @@ def main(
     if ctx.invoked_subcommand is None:
         run_interactive()
 
-@app.command(name="default")
-def default():
-    """无参数时启动交互式界面"""
-    run_interactive()
+# 删除这个命令，由回调函数处理无参数情况
 
 @clean_app.callback(invoke_without_command=True)
 def clean_main(ctx: typer.Context):
