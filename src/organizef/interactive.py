@@ -25,12 +25,13 @@ from rich.rule import Rule
 from rich.tree import Tree
 from rich import box, print
 
-# 导入功能模块 - 将相对导入改为绝对导入
-from cleanf import remove_empty_folders, remove_backup_and_temp
+# 导入功能模块
+from cleanf.empty import remove_empty_folders
+from cleanf.backup import remove_backup_and_temp
 from dissolvef import flatten_single_subfolder, release_single_media_folder, dissolve_folder
 from dissolvef.media import VIDEO_FORMATS, ARCHIVE_FORMATS
 from migratef import migrate_files_with_structure
-from organizef import __version__
+from . import __version__
 
 # 创建控制台
 console = Console()
