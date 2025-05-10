@@ -531,8 +531,8 @@ def show_welcome() -> None:
     console.print("- [cyan]删除空文件夹[/cyan]: 删除所有空的文件夹")
     console.print("- [cyan]删除备份和临时文件[/cyan]: 删除备份文件(.bak)和临时文件夹(temp_)")
     
-    console.print("\n按 [bold green]Enter[/bold green] 键继续...", end="")
-    input()
+    # console.print("\n按 [bold green]Enter[/bold green] 键继续...", end="")
+    # input()
 
 
 def run_interactive() -> None:

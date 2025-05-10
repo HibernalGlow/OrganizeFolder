@@ -15,6 +15,7 @@ app = typer.Typer(
     help="OrganizeFolder - 一个功能丰富的文件夹整理工具，用于解散嵌套文件夹、清理空文件夹和备份文件等",
     no_args_is_help=False,
     add_completion=False,
+    invoke_without_command=True
 )
 
 # 添加子命令组
@@ -34,12 +35,15 @@ def version_callback(value: bool):
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-v", help="显示版本信息并退出", callback=version_callback),
 ):
     """OrganizeFolder 主命令"""
-    pass
+    # 当没有子命令被调用时，自动运行交互式界面
+    if ctx.invoked_subcommand is None:
+        run_interactive()
 
-@app.command(name="")
+@app.command(name="default")
 def default():
     """无参数时启动交互式界面"""
     run_interactive()
