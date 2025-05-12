@@ -15,18 +15,83 @@ from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeEl
 import concurrent.futures
 from threading import Lock
 import pyperclip
+from loguru import logger
+import os
+import sys
+from pathlib import Path
+from datetime import datetime
+
+def setup_logger(app_name="app", project_root=None, console_output=True):
+    """配置 Loguru 日志系统
+    
+    Args:
+        app_name: 应用名称，用于日志目录
+        project_root: 项目根目录，默认为当前文件所在目录
+        console_output: 是否输出到控制台，默认为True
+        
+    Returns:
+        tuple: (logger, config_info)
+            - logger: 配置好的 logger 实例
+            - config_info: 包含日志配置信息的字典
+    """
+    # 获取项目根目录
+    if project_root is None:
+        project_root = Path(__file__).parent.resolve()
+    
+    # 清除默认处理器
+    logger.remove()
+    
+    # 有条件地添加控制台处理器（简洁版格式）
+    if console_output:
+        logger.add(
+            sys.stdout,
+            level="INFO",
+            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <blue>{elapsed}</blue> | <level>{level.icon} {level: <8}</level> | <cyan>{name}:{function}:{line}</cyan> - <level>{message}</level>"
+        )
+    
+    # 使用 datetime 构建日志路径
+    current_time = datetime.now()
+    date_str = current_time.strftime("%Y-%m-%d")
+    hour_str = current_time.strftime("%H")
+    minute_str = current_time.strftime("%M%S")
+    
+    # 构建日志目录和文件路径
+    log_dir = os.path.join(project_root, "logs", app_name, date_str, hour_str)
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"{minute_str}.log")
+    
+    # 添加文件处理器
+    logger.add(
+        log_file,
+        level="DEBUG",
+        rotation="10 MB",
+        retention="30 days",
+        compression="zip",
+        encoding="utf-8",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {elapsed} | {level.icon} {level: <8} | {name}:{function}:{line} - {message}",
+    )
+    
+    # 创建配置信息字典
+    config_info = {
+        'log_file': log_file,
+    }
+    
+    logger.info(f"日志系统已初始化，应用名称: {app_name}")
+    return logger, config_info
+
+logger, config_info = setup_logger(app_name="migratef", console_output=True)
 
 # 创建 Typer 应用
 app = typer.Typer(help="文件迁移工具 - 保持目录结构迁移文件")
 
-# 初始化 Rich Console
+# 初始化 Rich Console，用于用户交互
 console = Console()
 
 def get_source_files_interactively() -> list[str]:
     """交互式地获取源文件路径列表。"""
     source_files = []
     prompt_message = "[bold cyan]请输入要迁移的源文件路径（每个路径一行，输入 'c' 从剪贴板读取，输入 'done' 或直接按 Enter 结束）：[/bold cyan]"
-    console.print(prompt_message)
+    logger.info(prompt_message)
     while True:
         try:
             # 使用 Prompt.ask 获取输入，允许为空或 'done' 结束
@@ -38,49 +103,60 @@ def get_source_files_interactively() -> list[str]:
                 try:
                     clipboard_content = pyperclip.paste()
                     if not clipboard_content:
-                        console.print("[yellow]剪贴板为空。[/yellow]")
+                        logger.warning("剪贴板为空")
+                        # console.print("[yellow]剪贴板为空。[/yellow]")
                         continue
 
                     paths_from_clipboard = [p.strip() for p in clipboard_content.splitlines() if p.strip()]
                     if not paths_from_clipboard:
-                        console.print("[yellow]剪贴板内容解析后没有有效的路径。[/yellow]")
+                        logger.warning("剪贴板内容解析后没有有效的路径")
+                        # console.print("[yellow]剪贴板内容解析后没有有效的路径。[/yellow]")
                         continue
 
                     added_count = 0
                     skipped_count = 0
                     error_count = 0
-                    console.print(f"  [cyan]正在处理剪贴板中的 {len(paths_from_clipboard)} 个路径...[/cyan]")
+                    logger.info(f"正在处理剪贴板中的 {len(paths_from_clipboard)} 个路径...")
+                    # console.print(f"  [cyan]正在处理剪贴板中的 {len(paths_from_clipboard)} 个路径...[/cyan]")
                     for cb_path_raw in paths_from_clipboard:
                         cb_path = cb_path_raw.strip('\"\'') # 移除引号
                         p = Path(cb_path)
                         if p.exists() and p.is_file():
                             if cb_path not in source_files: # 避免重复添加
                                 source_files.append(cb_path)
-                                console.print(f"    [green]已添加:[/green] {cb_path}")
+                                logger.info(f"已添加: {cb_path}")
+                                # console.print(f"    [green]已添加:[/green] {cb_path}")
                                 added_count += 1
                             else:
-                                console.print(f"    [dim]已存在:[/dim] {cb_path}")
+                                logger.debug(f"已存在: {cb_path}")
+                                # console.print(f"    [dim]已存在:[/dim] {cb_path}")
                                 skipped_count +=1
                         elif p.exists() and not p.is_file():
-                            console.print(f"    [yellow]警告:[/yellow] '{p.name}' 不是一个文件，已跳过。")
+                            logger.warning(f"警告: '{p.name}' 不是一个文件，已跳过")
+                            # console.print(f"    [yellow]警告:[/yellow] '{p.name}' 不是一个文件，已跳过。")
                             skipped_count += 1
                         else:
-                            console.print(f"    [red]错误:[/red] 文件 '{cb_path_raw}' (或处理后的 '{cb_path}') 不存在或路径无效，已跳过。")
+                            logger.error(f"错误: 文件 '{cb_path_raw}' (或处理后的 '{cb_path}') 不存在或路径无效，已跳过")
+                            # console.print(f"    [red]错误:[/red] 文件 '{cb_path_raw}' (或处理后的 '{cb_path}') 不存在或路径无效，已跳过。")
                             error_count += 1
-                    console.print(f"  [cyan]剪贴板处理完成：添加 {added_count}, 跳过 {skipped_count}, 错误 {error_count}[/cyan]")
+                    logger.info(f"剪贴板处理完成：添加 {added_count}, 跳过 {skipped_count}, 错误 {error_count}")
+                    # console.print(f"  [cyan]剪贴板处理完成：添加 {added_count}, 跳过 {skipped_count}, 错误 {error_count}[/cyan]")
 
                 except Exception as e:
-                    console.print(f"[red]从剪贴板读取或处理时发生错误: {e}[/red]")
+                    logger.error(f"从剪贴板读取或处理时发生错误: {e}")
+                    # console.print(f"[red]从剪贴板读取或处理时发生错误: {e}[/red]")
                 continue # 处理完剪贴板后，继续等待下一个输入
             # --- 新增结束 ---
 
 
             if not file_path_raw or file_path_raw.lower() == 'done':
                 if not source_files:
-                    console.print("[yellow]警告：未输入任何源文件路径。[/yellow]")
+                    logger.warning("警告：未输入任何源文件路径")
+                    # console.print("[yellow]警告：未输入任何源文件路径。[/yellow]")
                     # 使用 Confirm.ask 确认是否继续
                     if not Confirm.ask("确定要继续吗（不迁移任何文件）？", default=False):
-                        console.print("[bold red]操作已取消。[/bold red]")
+                        logger.error("操作已取消")
+                        # console.print("[bold red]操作已取消。[/bold red]")
                         exit() # 或者返回空列表让主函数处理
                     else:
                         break # 确认继续，即使列表为空
@@ -98,20 +174,26 @@ def get_source_files_interactively() -> list[str]:
             if p.exists() and p.is_file():
                  if file_path not in source_files: # 避免重复添加
                      source_files.append(file_path) # 添加处理后的路径
-                     console.print(f"  [green]已添加:[/green] {file_path}")
+                     logger.info(f"已添加: {file_path}")
+                     # console.print(f"  [green]已添加:[/green] {file_path}")
                  else:
-                     console.print(f"  [dim]已存在:[/dim] {file_path}")
+                     logger.debug(f"已存在: {file_path}")
+                     # console.print(f"  [dim]已存在:[/dim] {file_path}")
             elif p.exists() and not p.is_file():
-                 console.print(f"  [yellow]警告:[/yellow] '{p.name}' 不是一个文件，已跳过。")
+                 logger.warning(f"警告: '{p.name}' 不是一个文件，已跳过")
+                 # console.print(f"  [yellow]警告:[/yellow] '{p.name}' 不是一个文件，已跳过。")
             else:
                  # 打印原始带引号的路径，如果去引号后仍找不到，方便调试
-                 console.print(f"  [red]错误:[/red] 文件 '{file_path_raw}' (或处理后的 '{file_path}') 不存在或路径无效，已跳过。")
+                 logger.error(f"错误: 文件 '{file_path_raw}' (或处理后的 '{file_path}') 不存在或路径无效，已跳过")
+                 # console.print(f"  [red]错误:[/red] 文件 '{file_path_raw}' (或处理后的 '{file_path}') 不存在或路径无效，已跳过。")
 
         except KeyboardInterrupt:
-            console.print("\n[bold red]操作已中断。[/bold red]")
+            logger.error("操作已中断")
+            # console.print("\n[bold red]操作已中断。[/bold red]")
             exit()
         except Exception as e:
-            console.print(f"[red]输入时发生错误: {e}[/red]")
+            logger.error(f"输入时发生错误: {e}")
+            # console.print(f"[red]输入时发生错误: {e}[/red]")
 
     return source_files
 
@@ -126,7 +208,8 @@ def process_single_file(source_file_str: str, target_root: Path, progress: Progr
         # 再次检查文件是否存在且是文件
         if not source_file.is_file():
             with lock:
-                console.print(f"  [yellow]跳过:[/yellow] 源 '{file_name}' 在处理时不是文件或已消失。")
+                logger.warning(f"跳过: 源 '{file_name}' 在处理时不是文件或已消失")
+                # console.print(f"  [yellow]跳过:[/yellow] 源 '{file_name}' 在处理时不是文件或已消失。")
                 counters['skipped'] += 1
             progress.update(task_id, advance=1, description=f"[yellow]跳过:[/yellow] [dim]{file_name}[/dim]")
             return "skipped"
@@ -138,7 +221,8 @@ def process_single_file(source_file_str: str, target_root: Path, progress: Progr
             relative_path = Path(*relative_parts)
         except Exception as e:
             with lock:
-                console.print(f"  [red]错误:[/red] 无法确定文件 '{file_name}' 的相对路径: {e}。")
+                logger.error(f"错误: 无法确定文件 '{file_name}' 的相对路径: {e}")
+                # console.print(f"  [red]错误:[/red] 无法确定文件 '{file_name}' 的相对路径: {e}。")
                 counters['error'] += 1
             progress.update(task_id, advance=1, description=f"[red]错误(路径):[/red] [dim]{file_name}[/dim]")
             return "error"
@@ -153,7 +237,8 @@ def process_single_file(source_file_str: str, target_root: Path, progress: Progr
                 target_file_path.parent.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             with lock:
-                console.print(f"  [red]错误:[/red] 无法创建目标目录 '{target_file_path.parent}' : {e}。跳过文件 '{file_name}。")
+                logger.error(f"错误: 无法创建目标目录 '{target_file_path.parent}' : {e}。跳过文件 '{file_name}")
+                # console.print(f"  [red]错误:[/red] 无法创建目标目录 '{target_file_path.parent}' : {e}。跳过文件 '{file_name}。")
                 counters['error'] += 1
             progress.update(task_id, advance=1, description=f"[red]错误(目录):[/red] [dim]{file_name}[/dim]")
             return "error"
@@ -174,7 +259,8 @@ def process_single_file(source_file_str: str, target_root: Path, progress: Progr
         except Exception as e:
             with lock:
                 action_verb = "移动" if action == 'move' else "复制"
-                console.print(f"  [red]错误:[/red] {action_verb}文件 '{file_name}' 到 '{target_file_path}' 时出错: {e}")
+                logger.error(f"错误: {action_verb}文件 '{file_name}' 到 '{target_file_path}' 时出错: {e}")
+                # console.print(f"  [red]错误:[/red] {action_verb}文件 '{file_name}' 到 '{target_file_path}' 时出错: {e}")
                 counters['error'] += 1
             progress.update(task_id, advance=1, description=f"[red]错误({action}):[/red] [dim]{file_name}[/dim]")
             return "error"
@@ -182,7 +268,8 @@ def process_single_file(source_file_str: str, target_root: Path, progress: Progr
     except Exception as e:
         # 捕获处理单个文件的其他意外错误
         with lock:
-            console.print(f"[bold red]处理文件 '{source_file_str}' 时发生意外错误: {e}[/bold red]")
+            logger.error(f"处理文件 '{source_file_str}' 时发生意外错误: {e}")
+            # console.print(f"[bold red]处理文件 '{source_file_str}' 时发生意外错误: {e}[/bold red]")
             counters['error'] += 1
         progress.update(task_id, advance=1, description=f"[red]错误(未知):[/red] [dim]{file_name}[/dim]")
         return "error"
@@ -201,16 +288,20 @@ def migrate_files_with_structure(source_file_paths: list[str], target_root_dir: 
         action: 操作类型，'copy' 或 'move'。默认为 'copy'。
     """
     if not source_file_paths:
-        console.print("[yellow]没有需要迁移的文件。[/yellow]")
+        logger.warning("没有需要迁移的文件")
+        # console.print("[yellow]没有需要迁移的文件。[/yellow]")
         return
 
     try:
         target_root = Path(target_root_dir).resolve()
         target_root.mkdir(parents=True, exist_ok=True)
-        console.print(f"\n[bold green]目标根目录:[/bold green] {target_root}")
-        console.print(f"[bold blue]使用线程数:[/bold blue] {max_workers or os.cpu_count()}") # 显示使用的线程数
+        logger.info(f"目标根目录: {target_root}")
+        logger.info(f"使用线程数: {max_workers or os.cpu_count()}")
+        # console.print(f"\n[bold green]目标根目录:[/bold green] {target_root}")
+        # console.print(f"[bold blue]使用线程数:[/bold blue] {max_workers or os.cpu_count()}") # 显示使用的线程数
     except Exception as e:
-        console.print(f"[bold red]错误：无法创建或访问目标目录 '{target_root_dir}': {e}[/bold red]")
+        logger.error(f"错误：无法创建或访问目标目录 '{target_root_dir}': {e}")
+        # console.print(f"[bold red]错误：无法创建或访问目标目录 '{target_root_dir}': {e}[/bold red]")
         return
 
     # --- 修改：使用线程安全的计数器和锁 ---
@@ -253,21 +344,27 @@ def migrate_files_with_structure(source_file_paths: list[str], target_root_dir: 
     progress.refresh()
 
     action_verb_past = "移动" if action == 'move' else "复制"
-    console.print(f"\n[bold underline]迁移总结 ({action_verb_past}):[/bold underline]")
-    console.print(f"  成功{action_verb_past}: [bold green]{counters['migrated']}[/bold green] 个文件")
+    logger.info(f"迁移总结 ({action_verb_past}):")
+    logger.info(f"  成功{action_verb_past}: {counters['migrated']} 个文件")
+    # console.print(f"\n[bold underline]迁移总结 ({action_verb_past}):[/bold underline]")
+    # console.print(f"  成功{action_verb_past}: [bold green]{counters['migrated']}[/bold green] 个文件")
     if counters['skipped'] > 0:
-        console.print(f"  跳过文件: [bold yellow]{counters['skipped']}[/bold yellow] 个")
+        logger.warning(f"  跳过文件: {counters['skipped']} 个")
+        # console.print(f"  跳过文件: [bold yellow]{counters['skipped']}[/bold yellow] 个")
     if counters['error'] > 0:
-        console.print(f"  遇到错误: [bold red]{counters['error']}[/bold red] 个文件")
+        logger.error(f"  遇到错误: {counters['error']} 个文件")
+        # console.print(f"  遇到错误: [bold red]{counters['error']}[/bold red] 个文件")
     else:
-        console.print(f"  遇到错误: [bold green]0[/bold green] 个文件")
+        logger.info(f"  遇到错误: 0 个文件")
+        # console.print(f"  遇到错误: [bold green]0[/bold green] 个文件")
 
 def get_target_dir_interactively():
     target_dir = ""
     while not target_dir:
         target_dir = Prompt.ask("[bold cyan]请输入目标根目录路径[/bold cyan]",default="E:\\2EHV").strip()
         if not target_dir:
-            console.print("[yellow]目标目录不能为空，请重新输入。[/yellow]")
+            logger.warning("目标目录不能为空，请重新输入")
+            # console.print("[yellow]目标目录不能为空，请重新输入。[/yellow]")
         else:
             # 可以添加更多验证，例如检查是否是有效路径格式或是否可写
             target_p = Path(target_dir)
@@ -280,10 +377,12 @@ def get_target_dir_interactively():
                 test_file.unlink()
                 break # 验证通过
             except OSError as e:
-                 console.print(f"[red]错误：无法访问或写入目标目录 '{target_dir}': {e}。请检查路径和权限。[/red]")
+                 logger.error(f"错误：无法访问或写入目标目录 '{target_dir}': {e}。请检查路径和权限")
+                 # console.print(f"[red]错误：无法访问或写入目标目录 '{target_dir}': {e}。请检查路径和权限。[/red]")
                  target_dir = "" # 清空以便重新输入
             except Exception as e:
-                 console.print(f"[red]验证目标目录时发生意外错误: {e}[/red]")
+                 logger.error(f"验证目标目录时发生意外错误: {e}")
+                 # console.print(f"[red]验证目标目录时发生意外错误: {e}[/red]")
                  target_dir = "" # 清空以便重新输入
     return target_dir
 
@@ -297,8 +396,7 @@ def migrate(
     copy: bool = typer.Option(False, "--copy", help="复制文件而不是移动"),
     move: bool = typer.Option(True, "--move", help="移动文件而不是复制"),
 ):
-    """迁移文件，并保持目录结构"""
-    # 如果指定了交互式界面或没有任何参数，启动交互式界面
+    """迁移文件，并保持目录结构"""    # 如果指定了交互式界面或没有任何参数，启动交互式界面
     if interactive or not files:
         # 交互式获取源文件
         source_files = get_source_files_interactively()
@@ -319,8 +417,7 @@ def migrate(
     
     # 命令行模式
     source_files = []
-    
-    # 从剪贴板获取文件路径
+      # 从剪贴板获取文件路径
     if clipboard:
         try:
             clipboard_content = pyperclip.paste()
@@ -330,7 +427,8 @@ def migrate(
                 if path.exists() and path.is_file():
                     source_files.append(str(path))
         except Exception as e:
-            typer.echo(f"从剪贴板读取路径时出错: {e}", err=True)
+            logger.error(f"从剪贴板读取路径时出错: {e}")
+            # typer.echo(f"从剪贴板读取路径时出错: {e}", err=True)
     
     # 添加命令行指定的文件
     if files:
@@ -340,12 +438,14 @@ def migrate(
     
     # 确保有文件要迁移
     if not source_files:
-        typer.echo("错误: 没有有效的源文件。使用 --interactive 选项启动交互式界面。", err=True)
+        logger.error("错误: 没有有效的源文件。使用 --interactive 选项启动交互式界面")
+        # typer.echo("错误: 没有有效的源文件。使用 --interactive 选项启动交互式界面。", err=True)
         raise typer.Exit(code=1)
     
     # 确保有目标目录
     if not target:
-        typer.echo("错误: 未指定目标目录。请使用 --target 选项指定目标目录。", err=True)
+        logger.error("错误: 未指定目标目录。请使用 --target 选项指定目标目录")
+        # typer.echo("错误: 未指定目标目录。请使用 --target 选项指定目标目录。", err=True)
         raise typer.Exit(code=1)
     
     # 确保目标目录有效
@@ -353,7 +453,8 @@ def migrate(
         try:
             target.mkdir(parents=True)
         except Exception as e:
-            typer.echo(f"错误: 无法创建目标目录 {target}: {e}", err=True)
+            logger.error(f"错误: 无法创建目标目录 {target}: {e}")
+            # typer.echo(f"错误: 无法创建目标目录 {target}: {e}", err=True)
             raise typer.Exit(code=1)
     
     # 确定操作类型
@@ -388,7 +489,9 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        console.print("\n[bold red]操作已中断。[/bold red]")
+        logger.error("操作已中断")
+        # console.print("\n[bold red]操作已中断。[/bold red]")
     except Exception as e:
-        console.print(f"[bold red]发生错误: {e}[/bold red]")
+        logger.error(f"发生错误: {e}")
+        # console.print(f"[bold red]发生错误: {e}[/bold red]")
         sys.exit(1)
