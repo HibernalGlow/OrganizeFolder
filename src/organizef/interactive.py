@@ -550,17 +550,17 @@ def run_interactive() -> None:
     table.add_column("序号", style="cyan", width=5)
     table.add_column("功能", style="green")
     table.add_column("说明", style="magenta")
-    
     table.add_row("1", "交互式界面", "使用完整的交互式界面进行操作")
     table.add_row("2", "清理功能", "删除空文件夹和备份文件")
     table.add_row("3", "解散功能", "解散嵌套文件夹")
     table.add_row("4", "迁移功能", "迁移文件")
-    table.add_row("5", "退出程序", "退出 OrganizeFolder")
+    table.add_row("5", "合并功能", "合并部分文件夹")
+    table.add_row("6", "退出程序", "退出 OrganizeFolder")
     
     console.print(table)
     
     # 获取用户选择
-    choice = Prompt.ask("请选择功能", choices=["1", "2", "3", "4", "5"], default="4")
+    choice = Prompt.ask("请选择功能", choices=["1", "2", "3", "4", "5", "6"], default="4")
     
     if choice == "1":
         # 进入完整的交互式界面
@@ -580,7 +580,7 @@ def run_interactive() -> None:
             from dissolvef.__main__ import app as dissolve_app
             dissolve_app()
         except ImportError as e:
-            console.print(f"[red]错误：无法导入解散模块: {e}[/red]")
+            console.print(f"[red]错误：无法导入解散模块: {e}[/red]")    
     elif choice == "4":
         # 运行迁移功能
         console.print("\n[cyan]启动迁移功能...[/cyan]")
@@ -590,6 +590,14 @@ def run_interactive() -> None:
         except ImportError as e:
             console.print(f"[red]错误：无法导入迁移模块: {e}[/red]")
     elif choice == "5":
+        # 运行合并功能
+        console.print("\n[cyan]启动合并功能...[/cyan]")
+        try:
+            from mergef.__main__ import app as merge_app
+            merge_app()
+        except ImportError as e:
+            console.print(f"[red]错误：无法导入合并模块: {e}[/red]")
+    elif choice == "6":
         # 退出程序
         console.print("\n[bold green]感谢使用 OrganizeFolder![/bold green]")
         return
