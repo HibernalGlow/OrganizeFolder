@@ -22,6 +22,7 @@ dependencies = [
     "keyboard>=0.13.5",
     "typer>=0.9.0",
     "loguru>=0.7.3",
+    "click<8.2.0"
 ]
 
 [project.optional-dependencies]
@@ -41,12 +42,13 @@ ogf = "organizef.__main__:app"  # 添加别名
 cleanf = "cleanf.__main__:app"
 dissolvef = "dissolvef.__main__:app"
 migratef = "migratef.__main__:app"
+mergef = "mergef.__main__:app"
 [build-system]
 requires = ["setuptools>=42.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["organizef","cleanf","dissolvef","migratef"]
+packages = ["organizef","cleanf","dissolvef","migratef","mergef"]
 package-dir = {"" = "src"}
 
 [tool.black]

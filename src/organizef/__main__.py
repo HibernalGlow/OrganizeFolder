@@ -22,10 +22,12 @@ app = typer.Typer(
 clean_app = typer.Typer(help="清理文件夹 (删除空文件夹和备份文件)")
 dissolve_app = typer.Typer(help="解散嵌套文件夹")
 migrate_app = typer.Typer(help="迁移文件")
+merge_app = typer.Typer(help="合并同名的part文件夹")
 
 app.add_typer(clean_app, name="clean")
 app.add_typer(dissolve_app, name="dissolve")
 app.add_typer(migrate_app, name="migrate")
+app.add_typer(merge_app, name="merge")
 
 def version_callback(value: bool):
     """版本信息回调函数"""
@@ -77,11 +79,24 @@ def migrate_main(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
         try:
             # 导入 migratef 子包的 app
-            from src.migratef.__main__ import app as migrate_app
+            from migratef.__main__ import app as migrate_app
             typer.echo("正在执行文件迁移操作...")
             migrate_app()
         except ImportError as e:
             typer.echo(f"错误：无法导入 migratef 包: {e}", err=True)
+            raise typer.Exit(code=1)
+
+@merge_app.callback(invoke_without_command=True)
+def merge_main(ctx: typer.Context):
+    """合并同名的part文件夹 (调用 mergef 包的功能)"""
+    if ctx.invoked_subcommand is None:
+        try:
+            # 导入 mergef 子包的 app
+            from mergef.__main__ import app as merge_app
+            typer.echo("正在执行part文件夹合并操作...")
+            merge_app()
+        except ImportError as e:
+            typer.echo(f"错误：无法导入 mergef 包: {e}", err=True)
             raise typer.Exit(code=1)
 
 
