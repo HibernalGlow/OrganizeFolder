@@ -127,22 +127,22 @@ def merge_part_folders(base_path, preview_mode=False):
                     print(f"[green]删除空文件夹: {folder}[/]")
                 
                 # 对临时文件夹进行解散操作
-                script_path = Path(__file__).parent.parent / 'dissolvef' / 'direct.py'
-                if script_path.exists():
-                    print(f"\n[cyan]解散文件夹内容: {temp_folder}[/]")
-                    if preview_mode:
-                        print(f"[yellow]预览: 调用解散文件夹脚本处理 {temp_folder}[/]")
-                    else:
-                        try:
-                            # 导入并直接调用模块函数而不是使用subprocess
-                            from dissolvef.direct import dissolve_direct_subfolders
-                            dissolve_direct_subfolders(temp_folder)
-                        except ImportError:
-                            print("[yellow]无法导入解散文件夹模块，尝试使用子进程调用[/]")
-                            try:
-                                subprocess.run(['python', str(script_path), str(temp_folder)], check=True)
-                            except subprocess.CalledProcessError as e:
-                                print(f"[red]调用解散文件夹脚本失败: {e}[/]")
+                # script_path = Path(__file__).parent.parent / 'dissolvef' / 'direct.py'
+                # if script_path.exists():
+                print(f"\n[cyan]解散文件夹内容: {temp_folder}[/]")
+                if preview_mode:
+                    print(f"[yellow]预览: 调用解散文件夹脚本处理 {temp_folder}[/]")
+                else:
+                    try:
+                        # 导入并直接调用模块函数而不是使用subprocess
+                        from dissolvef import dissolve_folder
+                        dissolve_folder(temp_folder)
+                    except ImportError:
+                        print("[yellow]无法导入解散文件夹模块，尝试使用子进程调用[/]")
+                        # try:
+                        #     subprocess.run(['python', str(script_path), str(temp_folder)], check=True)
+                        # except subprocess.CalledProcessError as e:
+                        #     print(f"[red]调用解散文件夹脚本失败: {e}[/]")
                 
                 # 将解散后的文件移动到目标文件夹
                 if not preview_mode:

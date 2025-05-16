@@ -84,8 +84,8 @@ def run_interactive() -> None:
     ))
     
     # 询问用户是否使用剪贴板
-    use_clipboard = Confirm.ask("是否从剪贴板读取路径？")
-    preview_mode = Confirm.ask("是否启用预览模式（不实际执行操作）？")
+    use_clipboard = Confirm.ask("是否从剪贴板读取路径？", default=True)
+    preview_mode = Confirm.ask("是否启用预览模式（不实际执行操作）？", default=False)
     
     try:
         paths = get_multiple_paths(use_clipboard)
