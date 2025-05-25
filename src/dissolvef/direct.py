@@ -10,10 +10,11 @@ from pathlib import Path
 from typing import Tuple
 from rich.console import Console
 from rich.status import Status
+from loguru import logger
 
 console = Console()
 
-def handle_name_conflict(target_path, is_dir=False, mode='auto', logger=None):
+def handle_name_conflict(target_path, is_dir=False, mode='auto'):
     """
     处理文件名冲突
     
@@ -25,7 +26,6 @@ def handle_name_conflict(target_path, is_dir=False, mode='auto', logger=None):
         - 'skip': 跳过
         - 'overwrite': 覆盖（文件夹会合并内容）
         - 'rename': 重命名
-    logger: 可选的日志记录器
     
     返回:
     tuple: (Path, bool) - (最终路径, 是否继续处理)
@@ -40,30 +40,23 @@ def handle_name_conflict(target_path, is_dir=False, mode='auto', logger=None):
     
     # 输出日志
     item_type = "文件夹" if is_dir else "文件"
-    
-    # 根据不同模式处理冲突
+      # 根据不同模式处理冲突
     if mode == 'skip':
         message = f"跳过已存在的{item_type}: {target_path}"
-        if logger:
-            logger.info(message)
-        else:
-            console.print(message)
+        logger.info(message)
+        console.print(message)
         return target_path, False
         
     elif mode == 'overwrite':
         if is_dir:
             message = f"将合并到已存在的文件夹: {target_path}"
-            if logger:
-                logger.info(message)
-            else:
-                console.print(message)
+            logger.info(message)
+            console.print(message)
             return target_path, True
         else:
             message = f"将覆盖已存在的文件: {target_path}"
-            if logger:
-                logger.info(message)
-            else:
-                console.print(message)
+            logger.info(message)
+            console.print(message)
             target_path.unlink()
             return target_path, True
             
@@ -74,14 +67,12 @@ def handle_name_conflict(target_path, is_dir=False, mode='auto', logger=None):
             new_path = target_path.parent / new_name
             if not new_path.exists():
                 message = f"重命名为: {new_path}"
-                if logger:
-                    logger.info(message)
-                else:
-                    console.print(message)
+                logger.info(message)
+                console.print(message)
                 return new_path, True
             counter += 1
 
-def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', logger=None, preview=False):
+def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', preview=False):
     """
     将指定文件夹中的所有内容移动到其父文件夹中，然后删除该文件夹
     
@@ -89,7 +80,6 @@ def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', logger=None
     path (Path/str): 要解散的文件夹路径
     file_conflict (str): 文件冲突处理方式 ('auto'/'skip'/'overwrite'/'rename')
     dir_conflict (str): 文件夹冲突处理方式 ('auto'/'skip'/'overwrite'/'rename')
-    logger: 可选的日志记录器
     preview (bool): 如果为True，只预览操作不实际执行
     
     返回:
@@ -102,54 +92,45 @@ def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', logger=None
     try:
         # 转换路径为绝对路径
         path = Path(path).resolve()
-        
-        # 检查路径有效性
+          # 检查路径有效性
         if not path.exists() or not path.is_dir():
             message = f"错误：{path} 不是一个有效的文件夹"
-            if logger:
-                logger.error(message)
-            else:
-                console.print(f"[red]{message}[/red]")
+            logger.error(message)
+            console.print(f"[red]{message}[/red]")
             return False, 0, 0
             
         # 获取父目录
         parent_dir = path.parent
-        
         message = f"\n{'预览' if preview else '开始'}解散文件夹: {path}"
-        if logger:
-            logger.info(message)
-        else:
-            console.print(message)
-            if preview:
-                console.print(f"[bold cyan]预览模式:[/bold cyan] 不会实际移动文件")
+        logger.info(message)        
+        console.print(message)
+        if preview:
+            console.print(f"[bold cyan]预览模式:[/bold cyan] 不会实际移动文件")
         
         # 创建一个Rich状态指示器
         status = Status("正在扫描文件夹内容...", spinner="dots")
-        if logger is None and not preview:
+        if not preview:
             status.start()
         
         # 获取所有项目并排序（文件优先）
         items = list(path.iterdir())
         items.sort(key=lambda x: (x.is_dir(), x.name))  # 文件在前，文件夹在后
         
-        if logger:
-            logger.info(f"找到 {len([i for i in items if i.is_file()])} 个文件和 {len([i for i in items if i.is_dir()])} 个文件夹")
+        logger.info(f"找到 {len([i for i in items if i.is_file()])} 个文件和 {len([i for i in items if i.is_dir()])} 个文件夹")
         
         for item in items:
             target_path = parent_dir / item.name
             is_dir = item.is_dir()
-            
-            # 更新状态
-            if logger is None and not preview:
+              # 更新状态
+            if not preview:
                 status.update(f"处理: {item.name}")
             
             # 处理名称冲突
-            conflict_mode = dir_conflict if is_dir else file_conflict
+            conflict_mode = dir_conflict if is_dir else file_conflict            
             target_path, should_proceed = handle_name_conflict(
                 target_path, 
                 is_dir=is_dir,
-                mode=conflict_mode,
-                logger=logger
+                mode=conflict_mode
             )
             
             if not should_proceed:

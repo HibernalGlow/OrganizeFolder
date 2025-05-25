@@ -9,17 +9,17 @@ import shutil
 from pathlib import Path
 from rich.console import Console
 from rich.status import Status
+from loguru import logger
 
 console = Console()
 
-def flatten_single_subfolder(path, exclude_keywords=None, logger=None):
+def flatten_single_subfolder(path, exclude_keywords=None):
     """
     如果一个文件夹下只有一个文件夹，就将该文件夹的子文件夹释放掉，将其中的文件和文件夹移动到母文件夹
 
     参数:
     path (str/Path): 目标路径
     exclude_keywords (list): 排除关键词列表
-    logger: 可选的日志记录器
     
     返回:
     int: 处理的文件夹数量
@@ -34,11 +34,9 @@ def flatten_single_subfolder(path, exclude_keywords=None, logger=None):
     
     # 计数器
     processed_count = 0
-    
-    # 创建一个Rich状态指示器
+      # 创建一个Rich状态指示器
     status = Status("正在扫描文件夹结构...", spinner="dots")
-    if logger is None:  # 只有在没有日志记录器的情况下才显示状态
-        status.start()
+    status.start()
     
     try:
         for root, dirs, files in os.walk(path):
@@ -47,12 +45,9 @@ def flatten_single_subfolder(path, exclude_keywords=None, logger=None):
             # 检查当前路径是否包含排除关键词
             if any(keyword in str(root) for keyword in exclude_keywords):
                 continue
-            
-            # 更新状态
-            if logger is None:
-                status.update(f"检查文件夹: {root_path.name}")
-            else:
-                logger.info(f"检查文件夹: {root}")
+              # 更新状态
+            status.update(f"检查文件夹: {root_path.name}")
+            logger.info(f"检查文件夹: {root}")
             
             # 如果当前文件夹只有一个子文件夹且没有文件
             if len(dirs) == 1 and not files:
@@ -82,73 +77,50 @@ def flatten_single_subfolder(path, exclude_keywords=None, logger=None):
                                 new_name = f"{item.stem}_{counter}{item.suffix}" if item.suffix else f"{item.name}_{counter}"
                                 dst_item_path = root_path / new_name
                                 counter += 1
-                        
-                        # 移动文件
+                          # 移动文件
                         try:
                             shutil.move(str(src_item_path), str(dst_item_path))
-                            
-                            # 记录日志或打印信息
-                            if logger:
-                                logger.info(f"已移动: {src_item_path} -> {dst_item_path}")
+                            logger.info(f"已移动: {src_item_path} -> {dst_item_path}")
                             
                         except Exception as e:
-                            if logger:
-                                logger.error(f"移动失败: {src_item_path} - {e}")
-                            else:
-                                console.print(f"[red]移动失败[/red]: {src_item_path} - {e}")
+                            logger.error(f"移动失败: {src_item_path} - {e}")
+                            console.print(f"[red]移动失败[/red]: {src_item_path} - {e}")
                     
                     # 获取原始子文件夹的路径以便打印
                     original_subfolder = root_path / dirs[0]
                     
                     # 检查是否成功移动了所有内容
-                    if not any(subfolder_path.iterdir()):
-                        # 删除空的子文件夹
+                    if not any(subfolder_path.iterdir()):                        # 删除空的子文件夹
                         try:
                             shutil.rmtree(str(subfolder_path))
                             processed_count += 1
                             
-                            # 记录日志或打印信息
-                            if logger:
-                                logger.info(f"已解散嵌套文件夹: {original_subfolder}")
-                            else:
-                                console.print(f"已解散嵌套文件夹: [cyan]{original_subfolder}[/cyan]")
+                            logger.info(f"已解散嵌套文件夹: {original_subfolder}")
+                            console.print(f"已解散嵌套文件夹: [cyan]{original_subfolder}[/cyan]")
                             
                         except Exception as e:
-                            if logger:
-                                logger.error(f"删除文件夹失败: {subfolder_path} - {e}")
-                            else:
-                                console.print(f"[red]删除文件夹失败[/red]: {subfolder_path} - {e}")
+                            logger.error(f"删除文件夹失败: {subfolder_path} - {e}")
+                            console.print(f"[red]删除文件夹失败[/red]: {subfolder_path} - {e}")
                     else:
-                        if logger:
-                            logger.info(f"文件夹不为空，无法删除: {subfolder_path}")
-                        else:
-                            console.print(f"[yellow]文件夹不为空，无法删除[/yellow]: {subfolder_path}")
-                
+                        logger.info(f"文件夹不为空，无法删除: {subfolder_path}")
+                        console.print(f"[yellow]文件夹不为空，无法删除[/yellow]: {subfolder_path}")
                 except Exception as e:
-                    if logger:
-                        logger.error(f"处理文件夹失败: {root} - {e}")
-                    else:
-                        console.print(f"[red]处理文件夹失败[/red]: {root} - {e}")
-        
-        # 打印处理结果
-        if logger is None:
-            status.stop()
-            console.print(f"解散嵌套文件夹操作完成，共处理了 [green]{processed_count}[/green] 个文件夹")
-        else:
-            logger.info(f"解散嵌套文件夹操作完成，共处理了 {processed_count} 个文件夹")
+                    logger.error(f"处理文件夹失败: {root} - {e}")
+                    console.print(f"[red]处理文件夹失败[/red]: {root} - {e}")
+          # 打印处理结果
+        status.stop()
+        console.print(f"解散嵌套文件夹操作完成，共处理了 [green]{processed_count}[/green] 个文件夹")
+        logger.info(f"解散嵌套文件夹操作完成，共处理了 {processed_count} 个文件夹")
         
         return processed_count
-        
     except Exception as e:
-        if logger:
-            logger.error(f"解散嵌套文件夹出错: {e}")
-        else:
-            status.stop()
-            console.print(f"[red]解散嵌套文件夹出错[/red]: {e}")
+        logger.error(f"解散嵌套文件夹出错: {e}")
+        status.stop()
+        console.print(f"[red]解散嵌套文件夹出错[/red]: {e}")
         return processed_count
     finally:
         # 确保状态指示器被停止
-        if logger is None and status.started:
+        if status.started:
             status.stop()
 
 # 直接运行此文件时的入口点
