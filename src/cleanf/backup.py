@@ -3,68 +3,113 @@
 """
 import os
 import shutil
+import json
 from pathlib import Path
 import fnmatch
 import threading
 import concurrent.futures
 from typing import List, Tuple, Dict, Any, Optional
+from loguru import logger
+import re
+from .config import DELETE_PATTERNS
 
-# 在文件顶部添加删除规则配置
+# 默认删除规则配置（作为备用）
 DEFAULT_DELETE_PATTERNS = [
     ('*.bak', 'file'),     # 仅匹配文件
     ('temp_*', 'dir'),     # 仅匹配文件夹
-    ('*.trash', 'both')    # 同时匹配文件和文件夹
+    ('*.trash', 'both'),   # 同时匹配文件和文件夹
+    ('[#hb]*.txt', 'file') # 以[#hb]开头的txt文件
 ]
+
+def load_delete_patterns_from_json(json_path: str = None) -> List[Tuple[str, str]]:
+    """
+    从JSON文件加载删除规则
+    
+    参数:
+    json_path (str, 可选): JSON配置文件路径，默认为当前目录下的delete_patterns.json
+    
+    返回:
+    List[Tuple[str, str]]: 删除规则列表
+    """
+    if json_path is None:
+        # 使用当前脚本所在目录的delete_patterns.json
+        json_path = Path(__file__).parent / "delete_patterns.json"
+    
+    try:
+        json_path = Path(json_path)
+        if not json_path.exists():
+            logger.info(f"配置文件不存在: {json_path}，使用默认配置")
+            return DEFAULT_DELETE_PATTERNS
+            
+        with open(json_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+            
+        patterns = []
+        for item in config.get('delete_patterns', []):
+            pattern = item.get('pattern', '')
+            item_type = item.get('type', 'both')
+            if pattern:
+                patterns.append((pattern, item_type))
+                
+        return patterns if patterns else DEFAULT_DELETE_PATTERNS
+        
+    except Exception as e:
+        logger.info(f"读取配置文件失败: {e}，使用默认配置")
+        return DEFAULT_DELETE_PATTERNS
 
 
 class BackupCleaner:
     """备份文件和临时文件清理类"""
-    
-    def __init__(self, logger=None):
+    def __init__(self):
         """初始化清理器"""
-        self.logger = logger
-        
-    def log(self, message):
-        """输出日志"""
-        if self.logger:
-            self.logger.info(message)
-        else:
-            print(message)
-    
+        self.patterns = DELETE_PATTERNS
+
+    def _wildcard_to_regex(self, pattern: str) -> str:
+        """将shell通配符模式转换为正则表达式"""
+        # 转义正则特殊字符
+        pattern = re.escape(pattern)
+        # 替换通配符
+        pattern = pattern.replace(r'\*', '.*').replace(r'\?', '.')
+        return f'^{pattern}$'
+
     def is_match(self, name: str, pattern: str) -> bool:
-        """检查文件或文件夹名称是否匹配模式"""
-        return fnmatch.fnmatch(name.lower(), pattern.lower())
-    
-    def should_delete(self, path: Path, patterns: List[Tuple[str, str]]) -> bool:
+        """使用正则表达式匹配文件或文件夹名称，支持shell通配符自动转换"""
+        regex = pattern
+        # regex = self._wildcard_to_regex(pattern)
+        result = re.fullmatch(regex, name, re.IGNORECASE) is not None
+        return result
+
+    def should_delete(self, path: Path, patterns) -> bool:
         """
         检查路径是否应该被删除
         
         参数:
         path (Path): 要检查的路径
-        patterns (List[Tuple[str, str]]): 匹配模式列表，每项为(模式, 类型)
-            类型可以是: 'file'(文件), 'dir'(文件夹), 'both'(两者)
-            
+        patterns (List[dict]): 匹配模式列表，每项为dict，含pattern和type
+            type可以是: 'file'(文件), 'dir'(文件夹), 'both'(两者)
+        
         返回:
         bool: 如果应该删除则为True
         """
         name = path.name
         is_dir = path.is_dir()
         
-        for pattern, item_type in patterns:
+        for rule in patterns:
+            pattern = rule["pattern"]
+            item_type = rule["type"]
             if item_type == 'file' and not is_dir and self.is_match(name, pattern):
                 return True
             elif item_type == 'dir' and is_dir and self.is_match(name, pattern):
                 return True
             elif item_type == 'both' and self.is_match(name, pattern):
                 return True
-                
         return False
     
     def is_excluded(self, path: str, exclude_keywords: List[str]) -> bool:
         """检查路径是否应该被排除"""
         return any(keyword in path for keyword in exclude_keywords)
     
-    def process_item(self, item_path: Path, patterns: List[Tuple[str, str]], 
+    def process_item(self, item_path: Path, patterns, 
                      exclude_keywords: List[str]) -> Tuple[int, int]:
         """
         处理单个项目(文件或文件夹)
@@ -73,7 +118,7 @@ class BackupCleaner:
         """
         # 如果路径包含排除关键词，跳过
         if self.is_excluded(str(item_path), exclude_keywords):
-            self.log(f"跳过排除项: {item_path}")
+            logger.info(f"跳过排除项: {item_path}")
             return 0, 1
             
         # 检查是否符合删除条件
@@ -81,18 +126,18 @@ class BackupCleaner:
             try:
                 if item_path.is_dir():
                     shutil.rmtree(item_path)
-                    self.log(f"已删除文件夹: {item_path}")
+                    logger.info(f"已删除文件夹: {item_path}")
                 else:
                     item_path.unlink()
-                    self.log(f"已删除文件: {item_path}")
+                    logger.info(f"已删除文件: {item_path}")
                 return 1, 0
             except Exception as e:
-                self.log(f"删除失败 {item_path}: {e}")
+                logger.info(f"删除失败 {item_path}: {e}")
                 return 0, 1
         
         return 0, 0
     
-    def process_directory(self, dir_path: Path, patterns: List[Tuple[str, str]], 
+    def process_directory(self, dir_path: Path, patterns, 
                          exclude_keywords: List[str]) -> Tuple[int, int]:
         """
         处理目录中的所有项目
@@ -128,7 +173,7 @@ class BackupCleaner:
                         skipped += s
                         
         except Exception as e:
-            self.log(f"处理目录时出错 {dir_path}: {e}")
+            logger.info(f"处理目录时出错 {dir_path}: {e}")
         
         return removed, skipped
     
@@ -139,63 +184,58 @@ class BackupCleaner:
         
         参数:
         path (str/Path): 目标路径
-        patterns (List[Tuple[str, str]], 可选): 自定义匹配模式
+        patterns (List[dict], 可选): 自定义匹配模式
         exclude_keywords (List[str], 可选): 排除关键词
         max_workers (int, 可选): 最大工作线程数
-        
-        返回:
+          返回:
         tuple: (已删除数量, 已跳过数量)
         """
         path = Path(path) if isinstance(path, str) else path
-        patterns = patterns or DEFAULT_DELETE_PATTERNS
+        patterns = patterns or self.patterns
         exclude_keywords = exclude_keywords or []
         
-        self.log(f"\n开始清理备份文件和临时文件: {path}")
+        logger.info(f"\n开始清理备份文件和临时文件: {path}")
         
         # 确保路径存在
         if not path.exists():
-            self.log(f"路径不存在: {path}")
+            logger.info(f"路径不存在: {path}")
             return 0, 0
             
         # 单线程清理
         return self.process_directory(path, patterns, exclude_keywords)
 
 
-def remove_backup_and_temp(path, exclude_keywords=None, logger=None):
+def remove_backup_and_temp(path, exclude_keywords=None):
     """
     删除指定路径下的备份文件和临时文件夹
     
     参数:
     path (str/Path): 目标路径
     exclude_keywords (list, 可选): 排除关键词列表
-    logger: 日志记录器
     
     返回:
     tuple: (已删除数量, 已跳过数量)
     """
     path = Path(path) if isinstance(path, str) else path
-    if logger:
-        logger.info(f"\n开始清理备份文件和临时文件夹: {path}")
+    logger.info(f"\n开始清理备份文件和临时文件夹: {path}")
     
     try:
         # 创建清理器实例
-        cleaner = BackupCleaner(logger=logger)
+        cleaner = BackupCleaner()
         
         # 执行清理
         removed_count, skipped_count = cleaner.clean(
             path=path,
-            patterns=DEFAULT_DELETE_PATTERNS,
+            patterns=DELETE_PATTERNS,
             exclude_keywords=exclude_keywords or []
         )
         
-        if logger:
-            logger.info(f"清理完成，共删除 {removed_count} 个项目，跳过 {skipped_count} 个项目")
+        logger.info(f"清理完成，共删除 {removed_count} 个项目，跳过 {skipped_count} 个项目")
         
         return removed_count, skipped_count
         
     except Exception as e:
-        if logger:
-            logger.info(f"清理过程出错: {e}")
+        logger.info(f"清理过程出错: {e}")
         return 0, 0
 
 
@@ -224,13 +264,13 @@ if __name__ == "__main__":
                         if path.exists():
                             paths.append(path)
                         else:
-                            print(f"警告：路径不存在 - {line}")
+                            logger.warning(f"警告：路径不存在 - {line}")
                 
-                print(f"从剪贴板读取到 {len(paths)} 个有效路径")
+                logger.info(f"从剪贴板读取到 {len(paths)} 个有效路径")
         except ImportError:
-            print("警告：未安装pyperclip模块，无法从剪贴板读取。")
+            logger.warning("警告：未安装pyperclip模块，无法从剪贴板读取。")
         except Exception as e:
-            print(f"从剪贴板读取失败: {e}")
+            logger.error(f"从剪贴板读取失败: {e}")
     
     if args.paths:
         for path_str in args.paths:
@@ -238,22 +278,22 @@ if __name__ == "__main__":
             if path.exists():
                 paths.append(path)
             else:
-                print(f"警告：路径不存在 - {path_str}")
+                logger.warning(f"警告：路径不存在 - {path_str}")
     
     if not paths:
-        print("请输入要处理的文件夹路径，每行一个，输入空行结束:")
+        logger.info("请输入要处理的文件夹路径，每行一个，输入空行结束:")
         while True:
             if line := input().strip():
                 path = Path(line.strip('"').strip("'"))
                 if path.exists():
                     paths.append(path)
                 else:
-                    print(f"警告：路径不存在 - {line}")
+                    logger.warning(f"警告：路径不存在 - {line}")
             else:
                 break
     
     if not paths:
-        print("未提供任何有效的路径")
+        logger.info("未提供任何有效的路径")
         sys.exit(1)
     
     # 处理排除关键词
@@ -267,9 +307,9 @@ if __name__ == "__main__":
     
     cleaner = BackupCleaner()
     for path in paths:
-        print(f"\n处理路径: {path}")
+        logger.info(f"\n处理路径: {path}")
         removed, skipped = cleaner.clean(path, exclude_keywords=exclude_keywords)
         total_removed += removed
         total_skipped += skipped
     
-    print(f"\n清理完成，共删除 {total_removed} 个项目，跳过 {total_skipped} 个项目")
+    logger.info(f"\n清理完成，共删除 {total_removed} 个项目，跳过 {total_skipped} 个项目")

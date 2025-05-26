@@ -5,15 +5,15 @@ import os
 import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple
+from loguru import logger
 
-def remove_empty_folders(path, exclude_keywords=None, logger=None) -> Tuple[int, int]:
+def remove_empty_folders(path, exclude_keywords=None) -> Tuple[int, int]:
     """
     删除指定路径下的所有空文件夹
     
     参数:
     path (str/Path): 目标路径
     exclude_keywords (list, 可选): 排除关键词列表
-    logger: 日志记录器
     
     返回:
     tuple: (已删除数量, 已跳过数量)
@@ -23,18 +23,11 @@ def remove_empty_folders(path, exclude_keywords=None, logger=None) -> Tuple[int,
     removed_count = 0
     skipped_count = 0
     
-    if logger:
-        logger.info(f"\n开始删除空文件夹: {path}")
-    else:
-        print(f"\n开始删除空文件夹: {path}")
+    logger.info(f"\n开始删除空文件夹: {path}")
     
     # 确保路径存在
     if not path.exists():
-        message = f"路径不存在: {path}"
-        if logger:
-            logger.info(message)
-        else:
-            print(message)
+        logger.info(f"路径不存在: {path}")
         return 0, 0
     
     # 由底向上遍历删除空文件夹
@@ -42,11 +35,7 @@ def remove_empty_folders(path, exclude_keywords=None, logger=None) -> Tuple[int,
         # 检查当前路径是否包含排除关键词
         if any(keyword in root for keyword in exclude_keywords):
             skipped_count += 1
-            message = f"跳过含有排除关键词的文件夹: {root}"
-            if logger:
-                logger.info(message)
-            else:
-                print(message)
+            logger.info(f"跳过含有排除关键词的文件夹: {root}")
             continue
 
         # 检查并删除每个子文件夹
@@ -57,31 +46,15 @@ def remove_empty_folders(path, exclude_keywords=None, logger=None) -> Tuple[int,
                 if os.path.exists(folder_path) and not os.listdir(folder_path):
                     os.rmdir(folder_path)
                     removed_count += 1
-                    message = f"已删除空文件夹: {folder_path}"
-                    if logger:
-                        logger.info(message)
-                    else:
-                        print(message)
+                    logger.info(f"已删除空文件夹: {folder_path}")
             except FileNotFoundError:
-                message = f"路径不存在: {folder_path}"
-                if logger:
-                    logger.info(message)
-                else:
-                    print(message)
+                logger.info(f"路径不存在: {folder_path}")
             except Exception as e:
                 skipped_count += 1
-                message = f"删除文件夹失败: {folder_path} - {e}"
-                if logger:
-                    logger.info(message)
-                else:
-                    print(message)
+                logger.info(f"删除文件夹失败: {folder_path} - {e}")
     
     # 最后输出汇总信息
-    message = f"空文件夹删除完成，共删除 {removed_count} 个空文件夹，跳过 {skipped_count} 个文件夹"
-    if logger:
-        logger.info(message)
-    else:
-        print(message)
+    logger.info(f"空文件夹删除完成，共删除 {removed_count} 个空文件夹，跳过 {skipped_count} 个文件夹")
     
     return removed_count, skipped_count
 

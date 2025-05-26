@@ -482,11 +482,11 @@ def execute_operations(paths: List[Path], operations: Dict[str, bool], exclude_k
         
         if operations["remove_empty"]:
             console.print("\n[bold cyan]>>> 删除空文件夹...[/bold cyan]")
-            remove_empty_folders(path, exclude_keywords, rich_logger)
+            remove_empty_folders(path, exclude_keywords)
         
         if operations["clean_backup"]:
             console.print("\n[bold cyan]>>> 清理备份文件和临时文件夹...[/bold cyan]")
-            remove_backup_and_temp(path, exclude_keywords, rich_logger)
+            remove_backup_and_temp(path, exclude_keywords)
     
     console.print("\n[bold green]所有操作已完成![/bold green]")
 
