@@ -142,7 +142,7 @@ def main():
     max_index = max(format_index_map.keys())
     format_index = IntPrompt.ask(
         "请输入序号选择归档格式",
-        default=1,
+        default=6,
         show_choices=False,
         show_default=True
     )
@@ -163,6 +163,15 @@ def main():
     logger.info(f"用户选择的归档格式: {format_key}")
     console.print(f"已选择格式: [green]{format_key}")
     
+    # 新增：模式选择
+    mode = IntPrompt.ask("请选择模式：1-按文件夹名识别时间戳，2-全部用创建时间戳", choices=["1", "2"], default=1)
+    if mode == 2:
+        logger.info("已选择模式2：全部用创建时间戳")
+        console.print("[green]已选择模式2：全部用创建时间戳[/green]")
+    else:
+        logger.info("已选择模式1：按文件夹名识别时间戳")
+        console.print("[green]已选择模式1：按文件夹名识别时间戳[/green]")
+    
     # 收集所有操作用于预览
     operations = []
     folders_with_timestamp = []
@@ -176,21 +185,33 @@ def main():
     }
     
     for name in os.listdir(path):
-        folder_path = os.path.join(path, name)
-        if not os.path.isdir(folder_path) or folder_path == base_dst:
+        item_path = os.path.join(path, name)
+        if item_path == base_dst:
             continue
-            
-        dt = extract_timestamp_from_name(name)
-        if not dt:
-            logger.warning(f"未识别到时间戳: {name}")
-            console.print(f"[yellow]未识别到时间戳: {name}")
-            continue
-            
-        logger.debug(f"从文件夹名 {name} 识别到时间戳: {dt}")
-        folders_with_timestamp.append((folder_path, dt, name))
+        
+        if mode == 2:
+            # 模式2：全部用创建时间戳（包括文件和文件夹）
+            ctime = os.stat(item_path).st_ctime
+            dt = datetime.fromtimestamp(ctime)
+            type_str = "文件夹" if os.path.isdir(item_path) else "文件"
+            logger.info(f"模式2-用创建时间 {dt} 作为 {type_str} {name} 的时间戳")
+            console.print(f"[yellow]模式2-用创建时间 {dt.strftime('%Y-%m-%d')} 作为 {type_str} {name} 的时间戳")
+        else:
+            if not os.path.isdir(item_path):
+                continue
+            dt = extract_timestamp_from_name(name)
+            if not dt:
+                # 兼容原有兜底逻辑
+                ctime = os.stat(item_path).st_ctime
+                dt = datetime.fromtimestamp(ctime)
+                logger.warning(f"未识别到时间戳: {name}，已用创建时间 {dt} 作为时间戳")
+                console.print(f"[yellow]未识别到时间戳: {name}，已用创建时间 {dt.strftime('%Y-%m-%d')} 作为时间戳")
+            else:
+                logger.debug(f"从文件夹名 {name} 识别到时间戳: {dt}")
+        folders_with_timestamp.append((item_path, dt, name))
         
         # 预览
-        preview_path = archive_folder(folder_path, dt, base_dst, format_key, dry_run=True)
+        preview_path = archive_folder(item_path, dt, base_dst, format_key, dry_run=True)
         
         # 提取相对路径，更好地展示变化
         rel_dst = os.path.relpath(preview_path, base_dst)
