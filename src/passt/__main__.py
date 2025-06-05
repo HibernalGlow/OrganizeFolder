@@ -206,7 +206,7 @@ class ArchiveExtractor:
         
         # 如果目录已存在，询问是否覆盖
         if extract_dir.exists():
-            if not Confirm.ask(f"目录 {extract_dir.name} 已存在，是否覆盖？"):
+            if not Confirm.ask(f"目录 {extract_dir.name} 已存在，是否覆盖？", default=False):
                 logger.info(f"跳过解压: {archive_path.name}")
                 return False
             shutil.rmtree(extract_dir)
@@ -339,7 +339,7 @@ class ArchiveExtractor:
         if len(archives) > 10:
             console.print(f"  ... 还有 {len(archives) - 10} 个文件")
         
-        if not Confirm.ask(f"\n是否开始解压这 {len(archives)} 个压缩包？"):
+        if not Confirm.ask(f"\n是否开始解压这 {len(archives)} 个压缩包？",default=True):
             console.print("[yellow]用户取消操作[/yellow]")
             return
         
@@ -431,7 +431,7 @@ def get_user_input() -> Optional[Path]:
         )
         
         if not path_input.strip():
-            if not Confirm.ask("输入为空，是否退出？"):
+            if not Confirm.ask("输入为空，是否退出？",default=False):
                 continue
             return None
         
@@ -447,7 +447,7 @@ def get_user_input() -> Optional[Path]:
             if path.suffix.lower() not in ARCHIVE_EXTENSIONS:
                 console.print(f"[yellow]警告: {path.name} 不是支持的压缩包格式[/yellow]")
         
-        if Confirm.ask("确认使用此路径？"):
+        if Confirm.ask("确认使用此路径？",default=True):
             return path
 
 
