@@ -23,20 +23,22 @@ def flatten_single_subfolder(path, exclude_keywords=None):
     
     返回:
     int: 处理的文件夹数量
-    """
-    # 初始化参数
+    """    # 初始化参数
     if exclude_keywords is None:
         exclude_keywords = []
     
     # 转换路径为Path对象
     if isinstance(path, str):
         path = Path(path)
-    
-    # 计数器
+      # 计数器
     processed_count = 0
-      # 创建一个Rich状态指示器
+    # 创建一个Rich状态指示器
     status = Status("正在扫描文件夹结构...", spinner="dots")
+    status_started = False
+    
+    # 启动状态指示器
     status.start()
+    status_started = True
     
     try:
         for root, dirs, files in os.walk(path):
@@ -104,24 +106,28 @@ def flatten_single_subfolder(path, exclude_keywords=None):
                     else:
                         logger.info(f"文件夹不为空，无法删除: {subfolder_path}")
                         console.print(f"[yellow]文件夹不为空，无法删除[/yellow]: {subfolder_path}")
-                except Exception as e:
-                    logger.error(f"处理文件夹失败: {root} - {e}")
-                    console.print(f"[red]处理文件夹失败[/red]: {root} - {e}")
+                except Exception as e:                    logger.error(f"处理文件夹失败: {root} - {e}")
+                console.print(f"[red]处理文件夹失败[/red]: {root} - {e}")
           # 打印处理结果
-        status.stop()
+        if status_started:
+            status.stop()
         console.print(f"解散嵌套文件夹操作完成，共处理了 [green]{processed_count}[/green] 个文件夹")
         logger.info(f"解散嵌套文件夹操作完成，共处理了 {processed_count} 个文件夹")
         
         return processed_count
     except Exception as e:
         logger.error(f"解散嵌套文件夹出错: {e}")
-        status.stop()
+        if status_started:
+            status.stop()
         console.print(f"[red]解散嵌套文件夹出错[/red]: {e}")
         return processed_count
     finally:
         # 确保状态指示器被停止
-        if status.started:
-            status.stop()
+        if status_started:
+            try:
+                status.stop()
+            except:
+                pass
 
 # 直接运行此文件时的入口点
 if __name__ == "__main__":

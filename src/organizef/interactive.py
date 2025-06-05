@@ -471,14 +471,12 @@ def execute_operations(paths: List[Path], operations: Dict[str, bool], exclude_k
     # 执行其他操作
     for path in paths:
         console.print(Rule(f"处理目录: {path}"))
-        
         if operations["release_media"]:
             console.print("\n[bold cyan]>>> 释放单独媒体文件夹...[/bold cyan]")
-            release_single_media_folder(path, exclude_keywords, rich_logger)
-        
+            release_single_media_folder(path, exclude_keywords)
         if operations["flatten"]:
             console.print("\n[bold cyan]>>> 解散嵌套的单独文件夹...[/bold cyan]")
-            flatten_single_subfolder(path, exclude_keywords, rich_logger)
+            flatten_single_subfolder(path, exclude_keywords)
         
         if operations["remove_empty"]:
             console.print("\n[bold cyan]>>> 删除空文件夹...[/bold cyan]")

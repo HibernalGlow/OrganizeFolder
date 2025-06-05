@@ -51,21 +51,24 @@ def release_single_media_folder(path, exclude_keywords=None, preview=False):
         logger.error(f"路径不存在: {path}")
         console.print(f"[red]错误:[/red] 路径不存在 - {path}")
         return 0
-        
-    # 计数器
+          # 计数器
     processed_count = 0
-      # 创建一个Rich状态指示器
+    # 创建一个Rich状态指示器
     status = Status("正在扫描媒体文件夹...", spinner="dots")
+    status_started = False
     if not preview:
         status.start()
+        status_started = True
     
     if preview:
         console.print(f"[bold cyan]预览模式:[/bold cyan] 不会实际移动文件")
       # 记录开始处理
     message = f"{'预览' if preview else '开始处理'}单媒体文件夹: {path}"
     console.print(message)
-    
     try:
+        # 初始化结果消息，确保在任何路径都能访问到
+        result_message = ""
+        
         for root, dirs, files in os.walk(path, topdown=False):
             root_path = Path(root)
               # 检查当前路径是否包含排除关键词
@@ -88,8 +91,19 @@ def release_single_media_folder(path, exclude_keywords=None, preview=False):
                 logger.info(f"- 包含 {len(files)} 个文件")
                 
                 # 过滤出视频文件和压缩包文件
-                media_files = [f for f in files if is_video_file(f.name) or is_archive_file(f.name)]
-                  # 如果文件夹中只有一个媒体文件且没有其他文件和文件夹
+                # 确保处理的是Path对象，避免字符串没有name属性的错误
+                media_files = []
+                for f in files:
+                    try:
+                        if isinstance(f, str):
+                            f = Path(f)
+                        if is_video_file(f.name) or is_archive_file(f.name):
+                            media_files.append(f)
+                    except Exception as e:
+                        logger.warning(f"处理文件时出错: {f}, 错误: {str(e)}")
+                        continue
+                
+                # 如果文件夹中只有一个媒体文件且没有其他文件和文件夹
                 if len(media_files) == 1 and len(files) == 1 and len(dirs) == 0:
                     media_file = media_files[0]
                     media_type = "视频" if is_video_file(media_file.name) else "压缩包"
@@ -150,27 +164,30 @@ def release_single_media_folder(path, exclude_keywords=None, preview=False):
                 logger.error(f"错误信息: {str(e)}")
                 console.print(f"[red]处理文件夹时出错[/red] {root}:")
                 console.print(f"错误信息: {str(e)}")
-        
-        # 打印处理结果        result_message = f"单媒体文件夹{'预览' if preview else '处理'}完成，共{'发现' if preview else '处理了'} {processed_count} 个文件夹"
+          # 打印处理结果
+        result_message = f"单媒体文件夹{'预览' if preview else '处理'}完成，共{'发现' if preview else '处理了'} {processed_count} 个文件夹"
         if processed_count == 0:
             result_message += " (没有找到符合条件的文件夹)"
             
         logger.info(result_message)
-        if status.started:
+        if status_started:
             status.stop()
         console.print(f"\n{result_message}")
         
         return processed_count
     except Exception as e:
         logger.error(f"解散单媒体文件夹出错: {e}")
-        if status.started:
+        if status_started:
             status.stop()
         console.print(f"[red]解散单媒体文件夹出错[/red]: {e}")
         return processed_count
     finally:
         # 确保状态指示器被停止
-        if not preview and status.started:
-            status.stop()
+        if not preview and status_started:
+            try:
+                status.stop()
+            except:
+                pass
 
 # 直接运行此文件时的入口点
 if __name__ == "__main__":

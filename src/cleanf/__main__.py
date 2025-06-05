@@ -8,8 +8,8 @@ import logging
 import typer
 from rich.console import Console
 
-from .empty import remove_empty_folders
-from .backup import remove_backup_and_temp
+from cleanf.empty import remove_empty_folders
+from cleanf.backup import remove_backup_and_temp
 
 # 创建 Typer 应用
 app = typer.Typer(help="文件清理工具 - 删除空文件夹和备份文件")

@@ -9,9 +9,9 @@ import typer
 from enum import Enum
 from rich.console import Console
 
-from .nested import flatten_single_subfolder
-from .media import release_single_media_folder
-from .direct import dissolve_folder
+from dissolvef.nested import flatten_single_subfolder
+from dissolvef.media import release_single_media_folder
+from dissolvef.direct import dissolve_folder
 
 # 创建 Typer 应用
 app = typer.Typer(help="文件夹解散工具 - 解散嵌套文件夹和释放单媒体文件夹")
@@ -300,15 +300,13 @@ def run_interactive() -> None:
         # 其他解散模式
         for path in paths:
             console.print(Rule(f"处理目录: {path}"))
-            
             if operations["media_mode"]:
                 console.print("\n[bold cyan]>>> 解散单媒体文件夹...[/bold cyan]")
-                count = release_single_media_folder(path, exclude_keywords, rich_logger, preview_mode)
+                count = release_single_media_folder(path, exclude_keywords, preview_mode)
                 total_released_media += count
-            
             if operations["nested_mode"]:
                 console.print("\n[bold cyan]>>> 解散嵌套的单一文件夹...[/bold cyan]")
-                count = flatten_single_subfolder(path, exclude_keywords, rich_logger)
+                count = flatten_single_subfolder(path, exclude_keywords)
                 total_flattened_nested += count
     
     # 输出操作总结
@@ -428,15 +426,13 @@ def dissolve(
         # 其他解散模式
         for path in path_list:
             typer.echo(f"\n处理目录: {path}")
-            
             if media_mode:
                 typer.echo("\n>>> 解散单媒体文件夹...")
-                count = release_single_media_folder(path, exclude_keywords, logger, preview)
+                count = release_single_media_folder(path, exclude_keywords, preview)
                 total_released_media += count
-            
             if nested_mode:
                 typer.echo("\n>>> 解散嵌套的单一文件夹...")
-                count = flatten_single_subfolder(path, exclude_keywords, logger)
+                count = flatten_single_subfolder(path, exclude_keywords)
                 total_flattened_nested += count
     
     # 输出操作总结
