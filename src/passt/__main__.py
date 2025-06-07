@@ -427,7 +427,7 @@ def get_user_input() -> Optional[Path]:
     while True:
         path_input = Prompt.ask(
             "\n请输入要处理的文件夹或文件路径",
-            default="."
+            default=r"E:\1BACKUP\ehv\合集\todo"
         )
         
         if not path_input.strip():

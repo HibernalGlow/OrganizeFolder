@@ -12,6 +12,7 @@ from rich.console import Console
 from dissolvef.nested import flatten_single_subfolder
 from dissolvef.media import release_single_media_folder
 from dissolvef.direct import dissolve_folder
+from dissolvef.archive import release_single_archive_folder
 
 # 创建 Typer 应用
 app = typer.Typer(help="文件夹解散工具 - 解散嵌套文件夹和释放单媒体文件夹")
@@ -222,15 +223,17 @@ def run_interactive() -> None:
     table.add_row("2", "解散嵌套的单一文件夹", "解散只有一个子文件夹的嵌套文件夹")
     table.add_row("3", "直接解散指定文件夹", "将整个文件夹的内容移动到其父文件夹")
     table.add_row("4", "全部功能（除直接解散）", "执行选项1和2的操作")
+    table.add_row("5", "解散单压缩包文件夹", "解散只包含单个压缩包的文件夹")
     
     console.print(table)
     
-    choice = Prompt.ask("请选择操作", choices=["1", "2", "3", "4"], default="4")
+    choice = Prompt.ask("请选择操作", choices=["1", "2", "3", "4", "5"], default="4")
     
     operations = {
         "media_mode": False,
         "nested_mode": False,
-        "direct_mode": False
+        "direct_mode": False,
+        "archive_mode": False
     }
     
     # 设置操作标志
@@ -240,6 +243,8 @@ def run_interactive() -> None:
         operations["nested_mode"] = True
     if choice == "3":
         operations["direct_mode"] = True
+    if choice == "5":
+        operations["archive_mode"] = True
     
     # 选择排除关键词
     exclude_keywords = []
@@ -279,6 +284,7 @@ def run_interactive() -> None:
     total_dissolved_dirs = 0
     total_flattened_nested = 0
     total_released_media = 0
+    total_released_archive = 0
     
     if operations["direct_mode"]:
         # 直接解散模式
@@ -308,6 +314,10 @@ def run_interactive() -> None:
                 console.print("\n[bold cyan]>>> 解散嵌套的单一文件夹...[/bold cyan]")
                 count = flatten_single_subfolder(path, exclude_keywords)
                 total_flattened_nested += count
+            if operations["archive_mode"]:
+                console.print("\n[bold cyan]>>> 解散单压缩包文件夹...[/bold cyan]")
+                count = release_single_archive_folder(path, exclude_keywords, preview_mode)
+                total_released_archive += count
     
     # 输出操作总结
     console.print("\n[bold blue]解散操作总结:[/bold blue]")
@@ -322,6 +332,8 @@ def run_interactive() -> None:
             console.print(f"- {mode_prefix}解散 [green]{total_released_media}[/green] 个单媒体文件夹")
         if operations["nested_mode"]:
             console.print(f"- {mode_prefix}解散 [green]{total_flattened_nested}[/green] 个嵌套文件夹")
+        if operations["archive_mode"]:
+            console.print(f"- {mode_prefix}解散 [green]{total_released_archive}[/green] 个单压缩包文件夹")
     
     if preview_mode:
         console.print("\n[yellow]注意：这是预览模式，实际操作未执行[/yellow]")
@@ -347,7 +359,8 @@ def dissolve(
         ConflictStrategy.AUTO, help="文件夹冲突处理方式 (仅用于直接解散模式)"
     ),
     exclude: Optional[str] = typer.Option(None, help="排除关键词列表，用逗号分隔多个关键词"),
-    preview: bool = typer.Option(False, "--preview", "-p", help="预览模式，不实际执行操作")
+    preview: bool = typer.Option(False, "--preview", "-p", help="预览模式，不实际执行操作"),
+    archive: bool = typer.Option(False, "--archive", "-z", help="解散单压缩包文件夹")
 ):
     """解散文件夹：解散嵌套文件夹、单媒体文件夹或直接解散文件夹"""
     # 如果使用交互式界面，或者不带任何参数
@@ -359,8 +372,9 @@ def dissolve(
     # 处理解散模式参数
     nested_mode = nested or all
     media_mode = media or all
-      # 至少选择一种模式
-    if not (direct or nested_mode or media_mode):
+    archive_mode = archive or all
+    # 至少选择一种模式
+    if not (direct or nested_mode or media_mode or archive_mode):
         typer.echo("提示：未指定任何解散操作，默认执行单媒体文件夹解散")
         media_mode = True
     
@@ -405,6 +419,7 @@ def dissolve(
     total_dissolved_dirs = 0
     total_flattened_nested = 0
     total_released_media = 0
+    total_released_archive = 0
     
     if direct:
         # 直接解散模式
@@ -434,6 +449,10 @@ def dissolve(
                 typer.echo("\n>>> 解散嵌套的单一文件夹...")
                 count = flatten_single_subfolder(path, exclude_keywords)
                 total_flattened_nested += count
+            if archive_mode:
+                typer.echo("\n>>> 解散单压缩包文件夹...")
+                count = release_single_archive_folder(path, exclude_keywords, preview)
+                total_released_archive += count
     
     # 输出操作总结
     typer.echo("\n解散操作总结:")
@@ -448,6 +467,8 @@ def dissolve(
             typer.echo(f"- {mode_prefix}解散 {total_released_media} 个单媒体文件夹")
         if nested_mode:
             typer.echo(f"- {mode_prefix}解散 {total_flattened_nested} 个嵌套文件夹")
+        if archive_mode:
+            typer.echo(f"- {mode_prefix}解散 {total_released_archive} 个单压缩包文件夹")
     
     if preview:
         typer.echo("注意：这是预览模式，实际操作未执行")
