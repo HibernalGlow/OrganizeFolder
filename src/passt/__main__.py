@@ -17,6 +17,9 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 
+# 导入命令行参数库
+import typer
+
 # 导入Rich库
 from rich.console import Console
 from rich.prompt import Prompt, Confirm
@@ -90,6 +93,8 @@ def setup_logger(app_name="app", project_root=None, console_output=True):
 
 logger, config_info = setup_logger(app_name="passt", console_output=True)
 
+# 创建 Typer 应用
+app = typer.Typer(help="压缩包批量解压工具 - 支持密码尝试和文件重命名")
 
 console = Console()
 
@@ -99,6 +104,28 @@ ARCHIVE_EXTENSIONS = {
     '.xz', '.tar.gz', '.tar.bz2', '.tar.xz',
     '.cbz', '.cbr'
 }
+
+
+def get_paths_from_clipboard() -> List[Path]:
+    """从剪贴板读取多行路径"""
+    paths = []
+    try:
+        import pyperclip
+        clipboard_content = pyperclip.paste()
+        if clipboard_content:
+            for line in clipboard_content.splitlines():
+                if line := line.strip().strip('"').strip("'"):
+                    path = Path(line)
+                    if path.exists():
+                        paths.append(path)
+                    else:
+                        console.print(f"[yellow]警告：路径不存在 - {line}[/yellow]")
+            console.print(f"[green]从剪贴板读取到 {len(paths)} 个有效路径[/green]")
+    except ImportError:
+        console.print("[red]警告：未安装pyperclip模块，无法从剪贴板读取[/red]")
+    except Exception as e:
+        console.print(f"[red]从剪贴板读取失败: {e}[/red]")
+    return paths
 
 
 
@@ -123,6 +150,32 @@ def get_user_options() -> Tuple[bool, bool]:
     )
     
     return use_sdel, dissolve_folder
+
+
+def run_interactive() -> None:
+    """运行交互式界面"""
+    console.print(Panel.fit(
+        "[bold blue]压缩包批量解压工具[/bold blue]\n"
+        "支持密码尝试和文件重命名功能\n"
+        "支持格式: ZIP, RAR, 7Z, TAR, CBZ, CBR 等",
+        title="🗜️ 压缩包解压器"
+    ))
+    
+    # 获取用户输入
+    target_path = get_user_input()
+    if target_path is None:
+        console.print("[yellow]用户取消操作[/yellow]")
+        return
+    
+    # 初始化解压器
+    extractor = ArchiveExtractor()
+    
+    # 查找压缩包
+    console.print(f"\n[cyan]正在扫描路径: {target_path}[/cyan]")
+    archives = extractor.find_archives(target_path)
+    
+    # 处理压缩包
+    extractor.process_archives(archives)
 
 
 def get_user_input() -> Optional[Path]:
@@ -165,43 +218,82 @@ def get_user_input() -> Optional[Path]:
             return path
 
 
-def main():
-    """主函数"""
+@app.command()
+def extract(
+    paths: List[Path] = typer.Argument(None, help="要处理的文件或文件夹路径列表"),
+    clipboard: bool = typer.Option(False, "--clipboard", "-c", help="从剪贴板读取路径"),
+    interactive: bool = typer.Option(False, "--interactive", "-i", help="启用交互式界面"),
+    delete: bool = typer.Option(True, "--delete/--no-delete", "-d", help="解压成功后删除原压缩包"),
+    dissolve: bool = typer.Option(True, "--dissolve/--no-dissolve", help="重命名后解散压缩包文件夹"),
+    password_file: Optional[str] = typer.Option("passwords.json", "--password-file", "-p", help="密码配置文件路径"),
+):
+    """解压压缩包文件"""
+    
+    # 如果使用交互式界面，或者不带任何参数
+    if interactive or (len(sys.argv) == 1):
+        run_interactive()
+        return
+    
+    # 检查7z是否可用
     try:
-        # 检查7z是否可用
-        try:
-            subprocess.run(['7z'], capture_output=True, check=False)
-        except FileNotFoundError:
-            console.print("[red]错误: 未找到 7z 命令，请确保已安装 7-Zip[/red]")
-            return 1
-        
-        # 获取用户输入
-        target_path = get_user_input()
-        if target_path is None:
-            console.print("[yellow]用户取消操作[/yellow]")
-            return 0
-        
-        # 初始化解压器
-        extractor = ArchiveExtractor()
+        subprocess.run(['7z'], capture_output=True, check=False)
+    except FileNotFoundError:
+        console.print("[red]错误: 未找到 7z 命令，请确保已安装 7-Zip[/red]")
+        raise typer.Exit(code=1)
+    
+    # 获取要处理的路径
+    path_list = []
+    
+    if clipboard:
+        path_list.extend(get_paths_from_clipboard())
+    
+    if paths:
+        path_list.extend(paths)
+    
+    if not path_list:
+        console.print("[red]错误: 未提供任何有效的路径[/red]")
+        console.print("使用 --interactive 选项启动交互式界面，或使用 --clipboard 从剪贴板读取路径")
+        raise typer.Exit(code=1)
+    
+    # 初始化解压器
+    extractor = ArchiveExtractor(passwords_config_path=password_file)
+    
+    # 设置解压选项
+    extractor.delete_after_extract = delete
+    extractor.dissolve_folder = dissolve
+    
+    # 处理每个路径
+    for target_path in path_list:
+        console.print(f"\n[cyan]正在扫描路径: {target_path}[/cyan]")
         
         # 查找压缩包
-        console.print(f"\n[cyan]正在扫描路径: {target_path}[/cyan]")
         archives = extractor.find_archives(target_path)
+        
+        if not archives:
+            console.print(f"[yellow]在 {target_path} 中未找到压缩包文件[/yellow]")
+            continue
         
         # 处理压缩包
         extractor.process_archives(archives)
-        
-        logger.info("解压任务完成")
-        return 0
-        
-    except KeyboardInterrupt:
-        console.print("\n[yellow]用户中断操作[/yellow]")
-        return 1
-    except Exception as e:
-        logger.error(f"程序执行出错: {e}")
-        console.print(f"[red]程序执行出错: {e}[/red]")
-        return 1
+    
+    logger.info("解压任务完成")
+
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context):
+    """压缩包批量解压工具主入口"""
+    if ctx.invoked_subcommand is None:
+        # 如果没有指定子命令，运行交互式界面
+        run_interactive()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        app()
+    except KeyboardInterrupt:
+        console.print("\n[yellow]用户中断操作[/yellow]")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"程序执行出错: {e}")
+        console.print(f"[red]程序执行出错: {e}[/red]")
+        sys.exit(1)

@@ -48,7 +48,7 @@ mergef = "mergef.__main__:app"
 snf = "snf.__main__:main"  # 添加 snf 别名
 snu = "snu.__main__:main"
 synct = "synct.__main__:main"
-passt = "passt.__main__:main"
+passt = "passt.__main__:app"
 badzf = "badzf.__main__:main"
 [build-system]
 requires = ["setuptools>=42.0", "wheel"]
