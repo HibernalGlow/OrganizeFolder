@@ -104,14 +104,11 @@ def flatten_single_subfolder(path, exclude_keywords=None):
                             logger.error(f"删除文件夹失败: {subfolder_path} - {e}")
                             console.print(f"[red]删除文件夹失败[/red]: {subfolder_path} - {e}")
                     else:
-                        logger.info(f"文件夹不为空，无法删除: {subfolder_path}")
-                        console.print(f"[yellow]文件夹不为空，无法删除[/yellow]: {subfolder_path}")
-                except Exception as e:                    logger.error(f"处理文件夹失败: {root} - {e}")
-                console.print(f"[red]处理文件夹失败[/red]: {root} - {e}")
-          # 打印处理结果
+                        logger.info(f"文件夹不为空，无法删除: {subfolder_path}")                
+                except Exception as e:                    
+                    logger.error(f"处理文件夹失败: {root} - {e}")          # 打印处理结果
         if status_started:
             status.stop()
-        console.print(f"解散嵌套文件夹操作完成，共处理了 [green]{processed_count}[/green] 个文件夹")
         logger.info(f"解散嵌套文件夹操作完成，共处理了 {processed_count} 个文件夹")
         
         return processed_count
