@@ -109,6 +109,41 @@ class BackupCleaner:
         """检查路径是否应该被排除"""
         return any(keyword in path for keyword in exclude_keywords)
     
+    def scan_items(self, dir_path: Path, patterns, 
+                   exclude_keywords: List[str]) -> List[Path]:
+        """
+        扫描目录中要删除的项目，但不实际删除
+        
+        返回: 要删除的项目列表
+        """
+        items_to_delete = []
+        
+        try:
+            # 获取所有项目
+            items = list(dir_path.iterdir())
+            
+            # 先扫描文件
+            for item in items:
+                if item.is_file():
+                    if not self.is_excluded(str(item), exclude_keywords) and self.should_delete(item, patterns):
+                        items_to_delete.append(item)
+            
+            # 再扫描文件夹(由底向上)
+            for item in items:
+                if item.is_dir():
+                    # 先递归扫描子文件夹
+                    sub_items = self.scan_items(item, patterns, exclude_keywords)
+                    items_to_delete.extend(sub_items)
+                    
+                    # 检查原始文件夹是否要删除
+                    if not self.is_excluded(str(item), exclude_keywords) and self.should_delete(item, patterns):
+                        items_to_delete.append(item)
+                        
+        except Exception as e:
+            logger.info(f"扫描目录时出错 {dir_path}: {e}")
+        
+        return items_to_delete
+
     def process_item(self, item_path: Path, patterns, 
                      exclude_keywords: List[str]) -> Tuple[int, int]:
         """
@@ -165,8 +200,7 @@ class BackupCleaner:
                     r, s = self.process_directory(item, patterns, exclude_keywords)
                     removed += r
                     skipped += s
-                    
-                    # 如果原始文件夹仍然存在，再尝试删除它
+                      # 如果原始文件夹仍然存在，再尝试删除它
                     if item.exists():
                         r, s = self.process_item(item, patterns, exclude_keywords)
                         removed += r
@@ -178,7 +212,7 @@ class BackupCleaner:
         return removed, skipped
     
     def clean(self, path, patterns=None, exclude_keywords=None, 
-              max_workers=None) -> Tuple[int, int]:
+              max_workers=None, preview_mode=False) -> Tuple[int, int]:
         """
         清理备份文件和临时文件
         
@@ -187,12 +221,19 @@ class BackupCleaner:
         patterns (List[dict], 可选): 自定义匹配模式
         exclude_keywords (List[str], 可选): 排除关键词
         max_workers (int, 可选): 最大工作线程数
-          返回:
-        tuple: (已删除数量, 已跳过数量)
+        preview_mode (bool, 可选): 是否为预览模式
+        
+        返回:
+        tuple: (已删除数量, 已跳过数量) 或 预览模式下返回 (要删除的文件列表, 0)
         """
         path = Path(path) if isinstance(path, str) else path
         patterns = patterns or self.patterns
         exclude_keywords = exclude_keywords or []
+        
+        if preview_mode:
+            logger.info(f"\n扫描要删除的备份文件和临时文件: {path}")
+            items_to_delete = self.scan_items(path, patterns, exclude_keywords)
+            return items_to_delete, 0
         
         logger.info(f"\n开始清理备份文件和临时文件: {path}")
         
@@ -205,13 +246,14 @@ class BackupCleaner:
         return self.process_directory(path, patterns, exclude_keywords)
 
 
-def remove_backup_and_temp(path, exclude_keywords=None):
+def remove_backup_and_temp(path, exclude_keywords=None, custom_patterns=None):
     """
     删除指定路径下的备份文件和临时文件夹
     
     参数:
     path (str/Path): 目标路径
     exclude_keywords (list, 可选): 排除关键词列表
+    custom_patterns (list, 可选): 自定义清理模式列表，如果不提供则使用默认模式
     
     返回:
     tuple: (已删除数量, 已跳过数量)
@@ -223,10 +265,13 @@ def remove_backup_and_temp(path, exclude_keywords=None):
         # 创建清理器实例
         cleaner = BackupCleaner()
         
+        # 使用自定义模式或默认模式
+        patterns = custom_patterns if custom_patterns is not None else DELETE_PATTERNS
+        
         # 执行清理
         removed_count, skipped_count = cleaner.clean(
             path=path,
-            patterns=DELETE_PATTERNS,
+            patterns=patterns,
             exclude_keywords=exclude_keywords or []
         )
         

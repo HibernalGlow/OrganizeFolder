@@ -7,17 +7,59 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from loguru import logger
 
-def remove_empty_folders(path, exclude_keywords=None) -> Tuple[int, int]:
+def scan_empty_folders(path, exclude_keywords=None) -> List[Path]:
     """
-    删除指定路径下的所有空文件夹
+    扫描指定路径下的所有空文件夹，但不删除
     
     参数:
     path (str/Path): 目标路径
     exclude_keywords (list, 可选): 排除关键词列表
     
     返回:
-    tuple: (已删除数量, 已跳过数量)
+    List[Path]: 要删除的空文件夹路径列表
     """
+    path = Path(path) if isinstance(path, str) else path
+    exclude_keywords = exclude_keywords or []
+    empty_folders = []
+    
+    # 确保路径存在
+    if not path.exists():
+        return empty_folders
+    
+    # 由底向上遍历查找空文件夹
+    for root, dirs, files in os.walk(path, topdown=False):
+        # 检查当前路径是否包含排除关键词
+        if any(keyword in root for keyword in exclude_keywords):
+            continue
+
+        # 检查每个子文件夹
+        for dir_name in dirs:
+            folder_path = Path(root) / dir_name
+            try:
+                # 检查文件夹是否为空
+                if folder_path.exists() and not any(folder_path.iterdir()):
+                    empty_folders.append(folder_path)
+            except (FileNotFoundError, PermissionError):
+                continue
+    
+    return empty_folders
+
+def remove_empty_folders(path, exclude_keywords=None, preview_mode=False) -> Tuple[int, int]:
+    """
+    删除指定路径下的所有空文件夹
+    
+    参数:
+    path (str/Path): 目标路径
+    exclude_keywords (list, 可选): 排除关键词列表
+    preview_mode (bool, 可选): 是否为预览模式，如果是则只返回要删除的文件列表
+    
+    返回:
+    tuple: (已删除数量, 已跳过数量) 或 预览模式下返回 (要删除的文件列表, 0)
+    """
+    if preview_mode:
+        empty_folders = scan_empty_folders(path, exclude_keywords)
+        return empty_folders, 0
+    
     path = Path(path) if isinstance(path, str) else path
     exclude_keywords = exclude_keywords or []
     removed_count = 0

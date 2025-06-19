@@ -120,6 +120,7 @@ def run_interactive() -> None:
         from rich.status import Status
         from rich.rule import Rule
         from rich import box
+        from rich.columns import Columns
     except ImportError:
         logger.warning("未安装rich模块，无法使用交互式界面，将使用命令行模式")
         logger.info("提示: 可以通过 pip install rich 安装")
@@ -128,19 +129,12 @@ def run_interactive() -> None:
     # 创建控制台
     console = Console()
     
-    # 自定义日志类，使用rich的格式
-    class RichLogger:
-        def info(self, message):
-            console.print(message)
-        def warning(self, message):
-            console.print(f"[yellow]{message}[/yellow]")
-        def error(self, message):
-            console.print(f"[red]{message}[/red]")
-    
+    # 导入配置
+    from cleanf.config import CLEANING_PRESETS, PRESET_COMBINATIONS
     
     # 显示欢迎信息
     console.print(Panel.fit(
-        "# 文件清理工具\n\n一个用于清理文件夹的工具，提供空文件夹和备份文件清理功能",
+        "# 文件清理工具\n\n一个用于清理文件夹的工具，提供多种清理预设和自定义组合功能",
         title="cleanf",
         border_style="blue"
     ))
@@ -201,66 +195,152 @@ def run_interactive() -> None:
         console.print("[yellow]未选择任何路径，操作取消[/yellow]")
         return False
     
-    # 选择要执行的操作
-    console.print("\n[bold blue]== 选择要执行的操作 ==[/bold blue]")
+    # 选择清理模式
+    console.print("\n[bold blue]== 选择清理模式 ==[/bold blue]")
+    console.print("1. 使用预设组合")
+    console.print("2. 自定义选择清理项目")
     
-    table = Table(title="可用操作")
-    table.add_column("序号", style="cyan")
-    table.add_column("操作", style="green")
-    table.add_column("说明", style="magenta")
+    mode = Prompt.ask("请选择清理模式", choices=["1", "2"], default="1")
     
-    table.add_row("1", "删除空文件夹", "递归删除所有空文件夹")
-    table.add_row("2", "清理备份和临时文件", "删除备份文件(.bak)和临时文件夹")
-    table.add_row("3", "全部执行", "执行以上所有操作")
+    selected_presets = []
     
-    console.print(table)
+    if mode == "1":
+        # 显示预设组合
+        console.print("\n[bold green]== 可用的预设组合 ==[/bold green]")
+        
+        combo_table = Table(title="预设组合")
+        combo_table.add_column("序号", style="cyan", width=4)
+        combo_table.add_column("名称", style="green", width=15)
+        combo_table.add_column("说明", style="magenta", width=40)
+        combo_table.add_column("包含项目", style="yellow", width=20)
+        
+        combo_list = list(PRESET_COMBINATIONS.items())
+        for i, (key, combo) in enumerate(combo_list, 1):
+            preset_names = [CLEANING_PRESETS[p]["name"] for p in combo["presets"] if p in CLEANING_PRESETS]
+            combo_table.add_row(
+                str(i), 
+                combo["name"], 
+                combo["description"],
+                "\n".join(preset_names[:3]) + ("..." if len(preset_names) > 3 else "")
+            )
+        
+        console.print(combo_table)
+        
+        combo_choice = Prompt.ask(
+            f"请选择预设组合 (1-{len(combo_list)})", 
+            choices=[str(i) for i in range(1, len(combo_list) + 1)], 
+            default="2"
+        )
+        
+        selected_combo = combo_list[int(combo_choice) - 1][1]
+        selected_presets = selected_combo["presets"]
+        
+        console.print(f"\n[green]已选择预设组合: {selected_combo['name']}[/green]")
+        
+    else:
+        # 自定义选择清理项目
+        console.print("\n[bold green]== 自定义选择清理项目 ==[/bold green]")
+        
+        preset_table = Table(title="可用的清理项目")
+        preset_table.add_column("序号", style="cyan", width=4)
+        preset_table.add_column("名称", style="green", width=20)
+        preset_table.add_column("说明", style="magenta", width=35)
+        preset_table.add_column("默认", style="yellow", width=6)
+        
+        preset_list = list(CLEANING_PRESETS.items())
+        for i, (key, preset) in enumerate(preset_list, 1):
+            preset_table.add_row(
+                str(i),
+                preset["name"],
+                preset["description"], 
+                "✓" if preset["enabled"] else "✗"
+            )
+        
+        console.print(preset_table)
+        
+        console.print("\n[yellow]提示: 输入序号选择项目，多个项目用逗号分隔，如: 1,2,3[/yellow]")
+        console.print("[yellow]      按回车键使用默认启用的项目[/yellow]")
+        
+        choice_input = Prompt.ask("请选择要执行的清理项目", default="")
+        
+        if choice_input.strip():
+            try:
+                choices = [int(c.strip()) for c in choice_input.split(",")]
+                selected_presets = [preset_list[i-1][0] for i in choices if 1 <= i <= len(preset_list)]
+            except ValueError:
+                console.print("[red]输入格式错误，将使用默认配置[/red]")
+                selected_presets = [key for key, preset in CLEANING_PRESETS.items() if preset["enabled"]]
+        else:
+            # 使用默认启用的预设
+            selected_presets = [key for key, preset in CLEANING_PRESETS.items() if preset["enabled"]]
     
-    choice = Prompt.ask("请选择操作(多选请用逗号分隔，如1,2)", choices=["1", "2", "3"], default="3")
-    
-    operations = {
-        "remove_empty": False,
-        "clean_backup": False
-    }
-    
-    # 设置操作标志
-    choices = [c.strip() for c in choice.split(",")]
-    if "1" in choices or "3" in choices:
-        operations["remove_empty"] = True
-    if "2" in choices or "3" in choices:
-        operations["clean_backup"] = True
+    # 显示选中的清理项目
+    if selected_presets:
+        console.print("\n[bold cyan]== 将执行以下清理项目 ==[/bold cyan]")
+        for preset_key in selected_presets:
+            if preset_key in CLEANING_PRESETS:
+                preset = CLEANING_PRESETS[preset_key]
+                console.print(f"• [green]{preset['name']}[/green]: {preset['description']}")
     
     # 选择排除关键词
     exclude_keywords = []
-    if Confirm.ask("是否要排除某些文件夹/文件?", default=False):
+    if Confirm.ask("\n是否要排除某些文件夹/文件?", default=False):
         console.print("请输入排除关键词，多个关键词用逗号分隔:")
         keywords = input().strip()
         if keywords:
             exclude_keywords.extend([kw.strip() for kw in keywords.split(",")])
     
-    # 处理每个路径
-    total_empty_removed = 0
-    total_backup_removed = 0
+    # 最终确认
+    if not Confirm.ask(f"\n确认开始清理 {len(paths)} 个路径?", default=True):
+        console.print("[yellow]操作已取消[/yellow]")
+        return False
+    
+    # 执行清理操作
+    total_removed = {}
     
     for path in paths:
         console.print(Rule(f"处理目录: {path}"))
         
-        if operations["remove_empty"]:
-            console.print("\n[bold cyan]>>> 删除空文件夹...[/bold cyan]")
-            removed, _ = remove_empty_folders(path, exclude_keywords=exclude_keywords)
-            total_empty_removed += removed
-        
-        if operations["clean_backup"]:
-            console.print("\n[bold cyan]>>> 清理备份文件和临时文件夹...[/bold cyan]")
-            removed, _ = remove_backup_and_temp(path, exclude_keywords=exclude_keywords)
-            total_backup_removed += removed
+        for preset_key in selected_presets:
+            if preset_key not in CLEANING_PRESETS:
+                continue
+                
+            preset = CLEANING_PRESETS[preset_key]
+            console.print(f"\n[bold cyan]>>> {preset['name']}...[/bold cyan]")
+            
+            try:
+                if preset["function"] == "remove_empty_folders":
+                    removed, _ = remove_empty_folders(path, exclude_keywords=exclude_keywords)
+                elif preset["function"] == "remove_backup_and_temp":
+                    # 使用预设中定义的patterns
+                    patterns = preset.get("patterns", [])
+                    removed, _ = remove_backup_and_temp(
+                        path, 
+                        exclude_keywords=exclude_keywords,
+                        custom_patterns=patterns
+                    )
+                else:
+                    console.print(f"[red]未知的清理函数: {preset['function']}[/red]")
+                    continue
+                
+                if preset_key not in total_removed:
+                    total_removed[preset_key] = 0
+                total_removed[preset_key] += removed
+                
+            except Exception as e:
+                console.print(f"[red]执行 {preset['name']} 时出错: {e}[/red]")
     
     # 输出总结信息
-    console.print("\n[bold blue]清理总结:[/bold blue]")
-    if operations["remove_empty"]:
-        console.print(f"- 删除空文件夹: [green]{total_empty_removed}[/green] 个")
-    if operations["clean_backup"]:
-        console.print(f"- 删除备份和临时文件: [green]{total_backup_removed}[/green] 个")
-    console.print(f"- 总计删除: [green]{total_empty_removed + total_backup_removed}[/green] 个项目")
+    console.print("\n[bold blue]== 清理总结 ==[/bold blue]")
+    total_count = 0
+    for preset_key, count in total_removed.items():
+        if preset_key in CLEANING_PRESETS:
+            preset_name = CLEANING_PRESETS[preset_key]["name"]
+            console.print(f"• {preset_name}: [green]{count}[/green] 个")
+            total_count += count
+    
+    console.print(f"\n[bold green]总计删除: {total_count} 个项目[/bold green]")
+    console.print(f"日志文件: {config_info.get('log_file', 'N/A')}")
     
     console.print("\n[bold green]操作已完成![/bold green]")
     console.print("按 [bold]Enter[/bold] 键退出...", end="")
@@ -275,9 +355,28 @@ def clean(
     empty: bool = typer.Option(False, "--empty", "-e", help="删除空文件夹"),
     backup: bool = typer.Option(False, "--backup", "-b", help="删除备份文件和临时文件夹"),
     all: bool = typer.Option(False, "--all", "-a", help="执行所有清理操作"),
+    preset: Optional[str] = typer.Option(None, "--preset", "-p", help="使用预设组合 (basic/standard/advanced/development/system/complete)"),
+    list_presets: bool = typer.Option(False, "--list-presets", help="列出所有可用的预设"),
     exclude: Optional[str] = typer.Option(None, help="排除关键词列表，用逗号分隔多个关键词")
 ):
     """清理文件夹：删除空文件夹和备份文件"""
+    
+    # 如果请求列出预设
+    if list_presets:
+        from cleanf.config import CLEANING_PRESETS, PRESET_COMBINATIONS
+        
+        logger.info("=== 可用的清理预设 ===")
+        for key, preset in CLEANING_PRESETS.items():
+            status = "✓" if preset["enabled"] else "✗"
+            logger.info(f"{status} {preset['name']}: {preset['description']}")
+        
+        logger.info("\n=== 可用的预设组合 ===")
+        for key, combo in PRESET_COMBINATIONS.items():
+            logger.info(f"• {combo['name']}: {combo['description']}")
+            preset_names = [CLEANING_PRESETS[p]["name"] for p in combo["presets"] if p in CLEANING_PRESETS]
+            logger.info(f"  包含: {', '.join(preset_names)}")
+        return
+    
     # 如果使用交互式界面，或者不带任何参数
     if interactive or (len(sys.argv) == 1):
         if run_interactive():
@@ -285,13 +384,31 @@ def clean(
         # 如果交互式界面失败或返回False，继续使用命令行模式
     
     # 命令行模式
-    # 处理清理模式参数
-    remove_empty = empty or all
-    clean_backup = backup or all
+    from cleanf.config import CLEANING_PRESETS, PRESET_COMBINATIONS
     
-    if not (remove_empty or clean_backup):
-        logger.info("提示：未指定任何清理操作，默认执行所有清理操作")
-        remove_empty = clean_backup = True
+    # 处理预设
+    selected_presets = []
+    if preset:
+        if preset in PRESET_COMBINATIONS:
+            selected_presets = PRESET_COMBINATIONS[preset]["presets"]
+            logger.info(f"使用预设组合: {PRESET_COMBINATIONS[preset]['name']}")
+        else:
+            logger.info(f"未知的预设组合: {preset}")
+            logger.info("可用的预设组合: " + ", ".join(PRESET_COMBINATIONS.keys()))
+            raise typer.Exit(code=1)
+    else:
+        # 处理传统的清理模式参数
+        remove_empty = empty or all
+        clean_backup = backup or all
+        
+        if not (remove_empty or clean_backup):
+            logger.info("提示：未指定任何清理操作，默认执行基础清理操作")
+            selected_presets = ["empty_folders", "backup_files"]
+        else:
+            if remove_empty:
+                selected_presets.append("empty_folders")
+            if clean_backup:
+                selected_presets.append("backup_files")
     
     # 获取要处理的路径
     path_list = []
@@ -328,29 +445,58 @@ def clean(
     if exclude:
         exclude_keywords.extend(exclude.split(','))
     
-    # 处理每个路径
-    total_empty_removed = 0
-    total_backup_removed = 0
+    # 显示将要执行的操作
+    logger.info("将执行以下清理操作:")
+    for preset_key in selected_presets:
+        if preset_key in CLEANING_PRESETS:
+            preset = CLEANING_PRESETS[preset_key]
+            logger.info(f"• {preset['name']}: {preset['description']}")
+    
+    # 执行清理操作
+    total_removed = {}
     
     for path in path_list:
         logger.info(f"\n处理目录: {path}")
         
-        if remove_empty:
-            logger.info("\n>>> 删除空文件夹...")
-            removed, _ = remove_empty_folders(path, exclude_keywords=exclude_keywords)
-            total_empty_removed += removed
-        
-        if clean_backup:
-            logger.info("\n>>> 清理备份文件和临时文件夹...")
-            removed, _ = remove_backup_and_temp(path, exclude_keywords=exclude_keywords)
-            total_backup_removed += removed
+        for preset_key in selected_presets:
+            if preset_key not in CLEANING_PRESETS:
+                continue
+                
+            preset = CLEANING_PRESETS[preset_key]
+            logger.info(f"\n>>> {preset['name']}...")
+            
+            try:
+                if preset["function"] == "remove_empty_folders":
+                    removed, _ = remove_empty_folders(path, exclude_keywords=exclude_keywords)
+                elif preset["function"] == "remove_backup_and_temp":
+                    # 使用预设中定义的patterns
+                    patterns = preset.get("patterns", [])
+                    removed, _ = remove_backup_and_temp(
+                        path, 
+                        exclude_keywords=exclude_keywords,
+                        custom_patterns=patterns
+                    )
+                else:
+                    logger.info(f"未知的清理函数: {preset['function']}")
+                    continue
+                
+                if preset_key not in total_removed:
+                    total_removed[preset_key] = 0
+                total_removed[preset_key] += removed
+                
+            except Exception as e:
+                logger.info(f"执行 {preset['name']} 时出错: {e}")
     
+    # 输出总结信息
     logger.info("\n清理总结:")
-    if remove_empty:
-        logger.info(f"- 删除空文件夹: {total_empty_removed} 个")
-    if clean_backup:
-        logger.info(f"- 删除备份和临时文件: {total_backup_removed} 个")
-    logger.info(f"- 总计删除: {total_empty_removed + total_backup_removed} 个项目")
+    total_count = 0
+    for preset_key, count in total_removed.items():
+        if preset_key in CLEANING_PRESETS:
+            preset_name = CLEANING_PRESETS[preset_key]["name"]
+            logger.info(f"• {preset_name}: {count} 个")
+            total_count += count
+    
+    logger.info(f"总计删除: {total_count} 个项目")
 
 def main():
     """主入口函数"""

@@ -9,3 +9,4 @@ wheels/
 # Virtual environments
 .venv
 *.log
+src/badzf/archive_check_history.json
