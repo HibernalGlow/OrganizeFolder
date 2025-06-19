@@ -13,10 +13,10 @@ from .path_handler import get_valid_paths
 from .archive_checker import process_directory
 
 # 尝试导入TUI界面模块（可能在某些环境下不可用）
-try:
-    from textual_logger import TextualLoggerManager
-except ImportError:
-    TEXTUAL_AVAILABLE = False
+# try:
+#     from textual_logger import TextualLoggerManager
+# except ImportError:
+#     TEXTUAL_AVAILABLE = False
 TEXTUAL_AVAILABLE = False
 from .config import TEXTUAL_LAYOUT
 
@@ -41,7 +41,7 @@ def run_check(paths=None, use_clipboard=False, no_tui=False, force_check=False):
         # 初始化日志，不使用控制台输出（将由TUI接管）
         logger, config_info = setup_logger(app_name="badzipfilter", console_output=False)
         # 初始化TextualLogger
-        TextualLoggerManager.set_layout(TEXTUAL_LAYOUT, config_info['log_file'], newtab=True)
+        # TextualLoggerManager.set_layout(TEXTUAL_LAYOUT, config_info['log_file'], newtab=True)
         logger.info("使用TUI界面模式")
     
     directories = get_valid_paths(paths or [], use_clipboard)

@@ -50,18 +50,6 @@ CLEANING_PRESETS = {
         ],
         "enabled": True
     },
-    "cache_folders": {
-        "name": "缓存文件夹清理",
-        "description": "删除常见的缓存文件夹",
-        "function": "remove_backup_and_temp",
-        "patterns": [
-            {"pattern": r"^__pycache__$", "type": "dir", "description": "Python缓存文件夹"},
-            {"pattern": r"^\.cache$", "type": "dir", "description": "通用缓存文件夹"},
-            {"pattern": r"^node_modules$", "type": "dir", "description": "Node.js模块文件夹"},
-            {"pattern": r"^\.git$", "type": "dir", "description": "Git版本控制文件夹"}
-        ],
-        "enabled": False  # 默认不启用，因为可能误删重要文件
-    },
     "log_files": {
         "name": "日志文件清理",
         "description": "删除常见的日志文件",
@@ -72,14 +60,12 @@ CLEANING_PRESETS = {
         ],
         "enabled": False  # 默认不启用
     },
-    "thumbnail_files": {
-        "name": "缩略图文件清理", 
-        "description": "删除系统生成的缩略图文件",
+    "upscale": {
+        "name": "upscale文件清理",
+        "description": "删除常见的upscale文件",
         "function": "remove_backup_and_temp",
         "patterns": [
-            {"pattern": r"^Thumbs\.db$", "type": "file", "description": "Windows缩略图数据库"},
-            {"pattern": r"^\.DS_Store$", "type": "file", "description": "macOS文件夹属性文件"},
-            {"pattern": r"^desktop\.ini$", "type": "file", "description": "Windows文件夹配置文件"}
+            {"pattern": r".*\.upbak$", "type": "file", "description": "upbak文件"}
         ],
         "enabled": False  # 默认不启用
     }
@@ -87,30 +73,15 @@ CLEANING_PRESETS = {
 
 # 预设组合配置
 PRESET_COMBINATIONS = {
-    "basic": {
-        "name": "基础清理",
-        "description": "删除空文件夹和基本备份文件",
-        "presets": ["empty_folders", "backup_files"]
-    },
-    "standard": {
-        "name": "标准清理", 
-        "description": "基础清理 + 临时文件和垃圾文件",
-        "presets": ["empty_folders", "backup_files", "temp_folders", "trash_files"]
-    },
     "advanced": {
         "name": "高级清理",
         "description": "标准清理 + [#hb]文本文件",
         "presets": ["empty_folders", "backup_files", "temp_folders", "trash_files", "hb_txt_files"]
     },
-    "development": {
-        "name": "开发环境清理",
-        "description": "适用于开发环境的清理，包含缓存文件夹",
-        "presets": ["empty_folders", "backup_files", "temp_folders", "cache_folders"]
-    },
-    "system": {
-        "name": "系统文件清理",
-        "description": "清理系统生成的文件，如缩略图等",
-        "presets": ["empty_folders", "thumbnail_files"]
+    "upscale": {
+        "name": "upscale环境清理",
+        "description": "适用于upscale环境的清理，包含缓存文件夹",
+        "presets": ["empty_folders", "backup_files", "temp_folders", "trash_files", "hb_txt_files", "log_files", "upscale"]
     },
     "complete": {
         "name": "完整清理",
