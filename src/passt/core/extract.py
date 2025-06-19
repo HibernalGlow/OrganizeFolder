@@ -36,7 +36,6 @@ class ArchiveExtractor:
         self.console = Console()
         self.extracted_archives = []
         self.safe_deleter = SafeDeleter()  # 添加安全删除器
-        
     def load_passwords(self, config_path: str) -> List[str]:
         """从JSON配置文件加载密码列表
         
@@ -48,14 +47,32 @@ class ArchiveExtractor:
         """
         try:
             config_file = Path(__file__).parent / config_path
+            logger.debug(f"尝试加载密码配置文件: {config_file}")
+            
+            if not config_file.exists():
+                logger.error(f"密码配置文件不存在: {config_file}")
+                raise FileNotFoundError(f"配置文件不存在: {config_file}")
+                
             with open(config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
+            
             passwords = config.get('passwords', [''])
-            logger.info(f"已加载 {len(passwords)} 个密码")
+            logger.info(f"成功加载密码配置文件，共 {len(passwords)} 个密码")
+            
+            # 详细显示密码信息（隐藏敏感部分）
+            for i, pwd in enumerate(passwords):
+                if not pwd:
+                    logger.debug(f"密码 {i+1}: [空密码]")
+                else:
+                    masked_pwd = pwd[:3] + "*" * (len(pwd) - 3) if len(pwd) > 3 else pwd
+                    logger.debug(f"密码 {i+1}: {masked_pwd} (长度: {len(pwd)})")
+            
             return passwords
         except Exception as e:
-            logger.warning(f"加载密码配置失败: {e}，使用默认密码")
-            return ['', '123456', 'password', '123']
+            logger.error(f"加载密码配置失败: {e}，使用默认密码")
+            default_passwords = ["uohsoaixgnaixgnawab","mayuyu123",""]
+            logger.info(f"使用默认密码列表，共 {len(default_passwords)} 个密码")
+            return default_passwords
     def find_archives(self, search_path: Path) -> List[Path]:
         """查找指定路径下的所有压缩包
         
@@ -97,7 +114,7 @@ class ArchiveExtractor:
             
             if password:
                 cmd.append(f'-p{password}')
-            
+            logger.debug(f"执行命令: {' '.join(cmd)}")
             # 执行命令
             process = subprocess.Popen(
                 cmd,
@@ -165,12 +182,15 @@ class ArchiveExtractor:
             # 使用安全删除
             if not self.safe_deleter.safe_delete_folder(extract_dir):
                 logger.error(f"无法删除现有目录: {extract_dir}")
-                return False
-        
+                return False        
         extract_dir.mkdir(exist_ok=True)
-          # 尝试所有密码
+        # 尝试所有密码
         for i, password in enumerate(self.passwords):
-            password_display = "无密码" if not password else f"密码 {i+1}"
+            if not password:
+                password_display = f"无密码 (索引 {i+1})"
+            else:
+                password_display = f"密码 {i+1}: {password}" if len(password) > 3 else f"密码 {i+1}: {password}"
+            
             logger.info(f"尝试解压 {archive_path.name} - {password_display}")
             
             success, error = self.try_extract_with_7z(archive_path, extract_dir, password)
