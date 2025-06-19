@@ -289,11 +289,58 @@ def run_interactive() -> None:
         keywords = input().strip()
         if keywords:
             exclude_keywords.extend([kw.strip() for kw in keywords.split(",")])
-    
-    # 最终确认
+      # 最终确认
     if not Confirm.ask(f"\n确认开始清理 {len(paths)} 个路径?", default=True):
         console.print("[yellow]操作已取消[/yellow]")
         return False
+    
+    # 预览模式 - 收集所有要删除的文件
+    console.print("\n[bold cyan]== 正在扫描要删除的文件... ==[/bold cyan]")
+    all_files_to_delete = []
+    
+    for path in paths:
+        for preset_key in selected_presets:
+            if preset_key not in CLEANING_PRESETS:
+                continue
+                
+            preset = CLEANING_PRESETS[preset_key]
+            
+            try:
+                if preset["function"] == "remove_empty_folders":
+                    files_to_delete, _ = remove_empty_folders(path, exclude_keywords=exclude_keywords, preview_mode=True)
+                elif preset["function"] == "remove_backup_and_temp":
+                    # 使用预设中定义的patterns
+                    patterns = preset.get("patterns", [])
+                    files_to_delete, _ = remove_backup_and_temp(
+                        path, 
+                        exclude_keywords=exclude_keywords,
+                        custom_patterns=patterns,
+                        preview_mode=True
+                    )
+                else:
+                    continue
+                
+                # 添加标记信息到文件路径
+                for file_path in files_to_delete:
+                    all_files_to_delete.append((file_path, preset['name']))
+                
+            except Exception as e:
+                console.print(f"[red]扫描 {preset['name']} 时出错: {e}[/red]")
+    
+    # 显示预览
+    if all_files_to_delete:
+        from cleanf.preview import preview_deletion
+        
+        # 只传递路径，不包含预设信息
+        files_only = [item[0] for item in all_files_to_delete]
+        
+        # 显示预览并询问确认
+        if not preview_deletion(files_only, "文件删除预览", console):
+            console.print("[yellow]用户取消了删除操作[/yellow]")
+            return True
+    else:
+        console.print("[yellow]没有找到要删除的文件[/yellow]")
+        return True
     
     # 执行清理操作
     total_removed = {}
@@ -357,6 +404,7 @@ def clean(
     all: bool = typer.Option(False, "--all", "-a", help="执行所有清理操作"),
     preset: Optional[str] = typer.Option(None, "--preset", "-p", help="使用预设组合 (basic/standard/advanced/development/system/complete)"),
     list_presets: bool = typer.Option(False, "--list-presets", help="列出所有可用的预设"),
+    preview: bool = typer.Option(False, "--preview", help="预览要删除的文件（不实际删除）"),
     exclude: Optional[str] = typer.Option(None, help="排除关键词列表，用逗号分隔多个关键词")
 ):
     """清理文件夹：删除空文件夹和备份文件"""
@@ -444,13 +492,56 @@ def clean(
     exclude_keywords = []
     if exclude:
         exclude_keywords.extend(exclude.split(','))
-    
-    # 显示将要执行的操作
+      # 显示将要执行的操作
     logger.info("将执行以下清理操作:")
     for preset_key in selected_presets:
         if preset_key in CLEANING_PRESETS:
             preset = CLEANING_PRESETS[preset_key]
             logger.info(f"• {preset['name']}: {preset['description']}")
+    
+    # 预览模式 - 收集所有要删除的文件
+    if preview:
+        logger.info("\n正在扫描要删除的文件...")
+        all_files_to_delete = []
+        
+        for path in path_list:
+            for preset_key in selected_presets:
+                if preset_key not in CLEANING_PRESETS:
+                    continue
+                    
+                preset = CLEANING_PRESETS[preset_key]
+                
+                try:
+                    if preset["function"] == "remove_empty_folders":
+                        files_to_delete, _ = remove_empty_folders(path, exclude_keywords=exclude_keywords, preview_mode=True)
+                    elif preset["function"] == "remove_backup_and_temp":
+                        # 使用预设中定义的patterns
+                        patterns = preset.get("patterns", [])
+                        files_to_delete, _ = remove_backup_and_temp(
+                            path, 
+                            exclude_keywords=exclude_keywords,
+                            custom_patterns=patterns,
+                            preview_mode=True
+                        )
+                    else:
+                        continue
+                    
+                    all_files_to_delete.extend(files_to_delete)
+                    
+                except Exception as e:
+                    logger.info(f"扫描 {preset['name']} 时出错: {e}")
+        
+        # 显示预览
+        if all_files_to_delete:
+            from cleanf.preview import preview_deletion
+            
+            # 显示预览并询问确认
+            if not preview_deletion(all_files_to_delete, "文件删除预览"):
+                logger.info("用户取消了删除操作")
+                return
+        else:
+            logger.info("没有找到要删除的文件")
+            return
     
     # 执行清理操作
     total_removed = {}

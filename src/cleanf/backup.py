@@ -246,7 +246,7 @@ class BackupCleaner:
         return self.process_directory(path, patterns, exclude_keywords)
 
 
-def remove_backup_and_temp(path, exclude_keywords=None, custom_patterns=None):
+def remove_backup_and_temp(path, exclude_keywords=None, custom_patterns=None, preview_mode=False):
     """
     删除指定路径下的备份文件和临时文件夹
     
@@ -254,12 +254,12 @@ def remove_backup_and_temp(path, exclude_keywords=None, custom_patterns=None):
     path (str/Path): 目标路径
     exclude_keywords (list, 可选): 排除关键词列表
     custom_patterns (list, 可选): 自定义清理模式列表，如果不提供则使用默认模式
+    preview_mode (bool, 可选): 是否为预览模式，如果是则返回要删除的文件列表
     
     返回:
-    tuple: (已删除数量, 已跳过数量)
+    tuple: (已删除数量, 已跳过数量) 或 预览模式下返回 (要删除的文件列表, 0)
     """
     path = Path(path) if isinstance(path, str) else path
-    logger.info(f"\n开始清理备份文件和临时文件夹: {path}")
     
     try:
         # 创建清理器实例
@@ -268,14 +268,16 @@ def remove_backup_and_temp(path, exclude_keywords=None, custom_patterns=None):
         # 使用自定义模式或默认模式
         patterns = custom_patterns if custom_patterns is not None else DELETE_PATTERNS
         
-        # 执行清理
+        # 执行清理或预览
         removed_count, skipped_count = cleaner.clean(
             path=path,
             patterns=patterns,
-            exclude_keywords=exclude_keywords or []
+            exclude_keywords=exclude_keywords or [],
+            preview_mode=preview_mode
         )
         
-        logger.info(f"清理完成，共删除 {removed_count} 个项目，跳过 {skipped_count} 个项目")
+        if not preview_mode:
+            logger.info(f"清理完成，共删除 {removed_count} 个项目，跳过 {skipped_count} 个项目")
         
         return removed_count, skipped_count
         
