@@ -184,6 +184,12 @@ def get_user_input() -> Optional[Path]:
     Returns:
         Optional[Path]: 用户选择的路径，如果取消则返回None
     """
+    console.print(Panel.fit(
+        "[bold blue]压缩包批量解压工具[/bold blue]\n"
+        "支持密码尝试和文件重命名功能\n"
+        "支持格式: ZIP, RAR, 7Z, TAR, CBZ, CBR 等",
+        title="🗜️ 压缩包解压器"
+    ))
     
     while True:
         path_input = Prompt.ask(
@@ -281,8 +287,7 @@ def main(ctx: typer.Context):
         run_interactive()
 
 
-def cli_main():
-    """命令行入口点"""
+if __name__ == "__main__":
     try:
         app()
     except KeyboardInterrupt:
@@ -292,7 +297,3 @@ def cli_main():
         logger.error(f"程序执行出错: {e}")
         console.print(f"[red]程序执行出错: {e}[/red]")
         sys.exit(1)
-
-
-if __name__ == "__main__":
-    cli_main()
