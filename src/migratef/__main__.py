@@ -79,6 +79,57 @@ def setup_logger(app_name="app", project_root=None, console_output=True):
     logger.info(f"日志系统已初始化，应用名称: {app_name}")
     return logger, config_info
 
+def read_paths_from_stdin() -> List[str]:
+    """从标准输入读取文件路径列表"""
+    paths = []
+    try:
+        # 检查是否有标准输入数据 - 使用更可靠的方法
+        if sys.stdin.isatty():
+            return paths  # 没有管道输入
+        
+        logger.info("检测到管道输入，正在读取文件路径...")
+        
+        # 一次性读取所有标准输入内容
+        stdin_content = sys.stdin.read()
+        if not stdin_content.strip():
+            logger.info("标准输入为空")
+            return paths
+        
+        # 按行分割处理
+        for line in stdin_content.strip().split('\n'):
+            line = line.strip()
+            if line:
+                # 移除可能的引号
+                path = line.strip('"\'')
+                # 验证路径
+                p = Path(path)
+                if p.exists() and p.is_file():
+                    paths.append(path)
+                    logger.debug(f"从管道添加文件: {path}")
+                else:
+                    logger.warning(f"跳过无效路径: {path}")
+        
+        logger.info(f"从管道读取到 {len(paths)} 个有效文件路径")
+        
+    except Exception as e:
+        logger.error(f"从标准输入读取路径时出错: {e}")
+    
+    return paths
+
+# 全局变量存储管道输入，避免重复读取
+_stdin_files = None
+_stdin_read = False
+
+def get_stdin_files() -> List[str]:
+    """获取标准输入文件列表，确保只读取一次"""
+    global _stdin_files, _stdin_read
+    
+    if not _stdin_read:
+        _stdin_files = read_paths_from_stdin()
+        _stdin_read = True
+    
+    return _stdin_files or []
+
 logger, config_info = setup_logger(app_name="migratef", console_output=True)
 
 # 创建 Typer 应用
@@ -396,8 +447,34 @@ def migrate(
     copy: bool = typer.Option(False, "--copy", help="复制文件而不是移动"),
     move: bool = typer.Option(True, "--move", help="移动文件而不是复制"),
 ):
-    """迁移文件，并保持目录结构"""    # 如果指定了交互式界面或没有任何参数，启动交互式界面
-    if interactive or not files:
+    """迁移文件，并保持目录结构"""
+    
+    # 获取管道输入
+    stdin_files = get_stdin_files()
+    
+    # 如果有管道输入且指定了目标目录，直接处理
+    if stdin_files and target:
+        action_choice = "copy" if copy else "move"
+        logger.info(f"从管道接收到 {len(stdin_files)} 个文件，目标目录: {target}")
+        migrate_files_with_structure(stdin_files, str(target), max_workers=threads or 16, action=action_choice)
+        return
+    
+    # 如果有管道输入且没有指定目标目录，进入交互模式
+    if stdin_files and not target:
+        logger.info(f"从管道接收到 {len(stdin_files)} 个文件，进入交互模式")
+        target_dir = get_target_dir_interactively()
+        # 询问操作类型
+        action_choice = Prompt.ask(
+            "[bold cyan]请选择操作类型 ([i]copy[/i]/[i]move[/i])[/bold cyan]",
+            choices=["copy", "move"],
+            default="move"
+        ).lower()
+        # 执行迁移
+        migrate_files_with_structure(stdin_files, target_dir, max_workers=threads or 16, action=action_choice)
+        return
+    
+    # 如果指定了交互式界面或没有任何参数且没有管道输入，启动交互式界面
+    if interactive or (not files and not stdin_files):
         # 交互式获取源文件
         source_files = get_source_files_interactively()
         # 交互式获取目标目录
@@ -413,11 +490,16 @@ def migrate(
             num_threads = 16
             # 执行迁移
             migrate_files_with_structure(source_files, target_dir, max_workers=num_threads, action=action_choice)
-        return
-    
+        return    
     # 命令行模式
     source_files = []
-      # 从剪贴板获取文件路径
+    
+    # 先添加管道输入的文件
+    if stdin_files:
+        source_files.extend(stdin_files)
+        logger.info(f"已添加 {len(stdin_files)} 个来自管道的文件")
+    
+    # 从剪贴板获取文件路径
     if clipboard:
         try:
             clipboard_content = pyperclip.paste()
@@ -465,8 +547,25 @@ def migrate(
 
 def main():
     """主入口函数"""
-    # 检查是否没有提供任何参数，直接启动交互式界面
-    if len(sys.argv) == 1:
+    # 获取管道输入
+    stdin_files = get_stdin_files()
+    
+    # 如果有管道输入且没有其他参数，进入交互模式
+    if stdin_files and len(sys.argv) == 1:
+        logger.info(f"从管道接收到 {len(stdin_files)} 个文件，进入交互模式")
+        target_dir = get_target_dir_interactively()
+        # 询问操作类型
+        action_choice = Prompt.ask(
+            "[bold cyan]请选择操作类型 ([i]copy[/i]/[i]move[/i])[/bold cyan]",
+            choices=["copy", "move"],
+            default="move"
+        ).lower()
+        # 执行迁移
+        migrate_files_with_structure(stdin_files, target_dir, max_workers=16, action=action_choice)
+        return
+    
+    # 检查是否没有提供任何参数且没有管道输入，直接启动交互式界面
+    if len(sys.argv) == 1 and not stdin_files:
         # 交互式获取源文件
         source_files = get_source_files_interactively()
         # 交互式获取目标目录

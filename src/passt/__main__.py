@@ -184,12 +184,6 @@ def get_user_input() -> Optional[Path]:
     Returns:
         Optional[Path]: 用户选择的路径，如果取消则返回None
     """
-    console.print(Panel.fit(
-        "[bold blue]压缩包批量解压工具[/bold blue]\n"
-        "支持密码尝试和文件重命名功能\n"
-        "支持格式: ZIP, RAR, 7Z, TAR, CBZ, CBR 等",
-        title="🗜️ 压缩包解压器"
-    ))
     
     while True:
         path_input = Prompt.ask(
