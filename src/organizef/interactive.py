@@ -583,7 +583,7 @@ def run_interactive() -> None:
         # 运行迁移功能
         console.print("\n[cyan]启动迁移功能...[/cyan]")
         try:
-            from migratef.__main__ import app as migrate_app
+            from migratef.pipe.__main__ import app as migrate_app
             migrate_app()
         except ImportError as e:
             console.print(f"[red]错误：无法导入迁移模块: {e}[/red]")

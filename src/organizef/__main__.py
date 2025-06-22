@@ -79,7 +79,7 @@ def migrate_main(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
         try:
             # 导入 migratef 子包的 app
-            from migratef.__main__ import app as migrate_app
+            from migratef.pipe.__main__ import app as migrate_app
             typer.echo("正在执行文件迁移操作...")
             migrate_app()
         except ImportError as e:
