@@ -15,7 +15,7 @@ import pyperclip
 import logging
 from loguru import logger
 
-from .merge_part import merge_part_folders, get_multiple_paths
+from mergef.merge_part import merge_part_folders, get_multiple_paths
 
 # 创建 Typer 应用
 app = typer.Typer(help="文件夹合并工具 - 合并同名的part文件夹")

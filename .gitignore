@@ -10,3 +10,4 @@ wheels/
 .venv
 *.log
 src/badzf/archive_check_history.json
+/src/dissolvef/logs
