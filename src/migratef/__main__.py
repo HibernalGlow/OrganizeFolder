@@ -82,20 +82,20 @@ def setup_logger(app_name="app", project_root=None, console_output=True):
 logger, config_info = setup_logger(app_name="migratef", console_output=True)
 
 # 创建 Typer 应用
-app = typer.Typer(help="文件迁移工具 - 保持目录结构迁移文件")
+app = typer.Typer(help="文件迁移工具 - 保持目录结构迁移文件和文件夹")
 
 # 初始化 Rich Console，用于用户交互
 console = Console()
 
-def get_source_files_interactively() -> list[str]:
-    """交互式地获取源文件路径列表。"""
-    source_files = []
-    prompt_message = "[bold cyan]请输入要迁移的源文件路径（每个路径一行，输入 'c' 从剪贴板读取，输入 'done' 或直接按 Enter 结束）：[/bold cyan]"
+def get_source_paths_interactively() -> list[str]:
+    """交互式地获取源文件和文件夹路径列表。"""
+    source_paths = []
+    prompt_message = "[bold cyan]请输入要迁移的源文件或文件夹路径（每个路径一行，输入 'c' 从剪贴板读取，输入 'done' 或直接按 Enter 结束）：[/bold cyan]"
     logger.info(prompt_message)
     while True:
         try:
             # 使用 Prompt.ask 获取输入，允许为空或 'done' 结束
-            file_path_raw = Prompt.ask("  [dim]源文件路径[/dim]", default="done", show_default=False).strip()
+            file_path_raw = Prompt.ask("  [dim]源路径（文件或文件夹）[/dim]", default="done", show_default=False).strip()
 
             # --- 新增：处理剪贴板输入 ---
             if file_path_raw.lower() == 'c':
@@ -121,9 +121,9 @@ def get_source_files_interactively() -> list[str]:
                     for cb_path_raw in paths_from_clipboard:
                         cb_path = cb_path_raw.strip('\"\'') # 移除引号
                         p = Path(cb_path)
-                        if p.exists() and p.is_file():
-                            if cb_path not in source_files: # 避免重复添加
-                                source_files.append(cb_path)
+                        if p.exists() and (p.is_file() or p.is_dir()):
+                            if cb_path not in source_paths: # 避免重复添加
+                                source_paths.append(cb_path)
                                 logger.info(f"已添加: {cb_path}")
                                 # console.print(f"    [green]已添加:[/green] {cb_path}")
                                 added_count += 1
@@ -131,13 +131,13 @@ def get_source_files_interactively() -> list[str]:
                                 logger.debug(f"已存在: {cb_path}")
                                 # console.print(f"    [dim]已存在:[/dim] {cb_path}")
                                 skipped_count +=1
-                        elif p.exists() and not p.is_file():
-                            logger.warning(f"警告: '{p.name}' 不是一个文件，已跳过")
-                            # console.print(f"    [yellow]警告:[/yellow] '{p.name}' 不是一个文件，已跳过。")
+                        elif p.exists() and not (p.is_file() or p.is_dir()):
+                            logger.warning(f"警告: '{p.name}' 不是文件或文件夹，已跳过")
+                            # console.print(f"    [yellow]警告:[/yellow] '{p.name}' 不是文件或文件夹，已跳过。")
                             skipped_count += 1
                         else:
-                            logger.error(f"错误: 文件 '{cb_path_raw}' (或处理后的 '{cb_path}') 不存在或路径无效，已跳过")
-                            # console.print(f"    [red]错误:[/red] 文件 '{cb_path_raw}' (或处理后的 '{cb_path}') 不存在或路径无效，已跳过。")
+                            logger.error(f"错误: 路径 '{cb_path_raw}' (或处理后的 '{cb_path}') 不存在或路径无效，已跳过")
+                            # console.print(f"    [red]错误:[/red] 路径 '{cb_path_raw}' (或处理后的 '{cb_path}') 不存在或路径无效，已跳过。")
                             error_count += 1
                     logger.info(f"剪贴板处理完成：添加 {added_count}, 跳过 {skipped_count}, 错误 {error_count}")
                     # console.print(f"  [cyan]剪贴板处理完成：添加 {added_count}, 跳过 {skipped_count}, 错误 {error_count}[/cyan]")
@@ -150,9 +150,9 @@ def get_source_files_interactively() -> list[str]:
 
 
             if not file_path_raw or file_path_raw.lower() == 'done':
-                if not source_files:
-                    logger.warning("警告：未输入任何源文件路径")
-                    # console.print("[yellow]警告：未输入任何源文件路径。[/yellow]")
+                if not source_paths:
+                    logger.warning("警告：未输入任何源路径")
+                    # console.print("[yellow]警告：未输入任何源路径。[/yellow]")
                     # 使用 Confirm.ask 确认是否继续
                     if not Confirm.ask("确定要继续吗（不迁移任何文件）？", default=False):
                         logger.error("操作已取消")
@@ -171,21 +171,21 @@ def get_source_files_interactively() -> list[str]:
 
             # 简单的路径有效性检查 (使用处理后的 file_path)
             p = Path(file_path)
-            if p.exists() and p.is_file():
-                 if file_path not in source_files: # 避免重复添加
-                     source_files.append(file_path) # 添加处理后的路径
+            if p.exists() and (p.is_file() or p.is_dir()):
+                 if file_path not in source_paths: # 避免重复添加
+                     source_paths.append(file_path) # 添加处理后的路径
                      logger.info(f"已添加: {file_path}")
                      # console.print(f"  [green]已添加:[/green] {file_path}")
                  else:
                      logger.debug(f"已存在: {file_path}")
                      # console.print(f"  [dim]已存在:[/dim] {file_path}")
-            elif p.exists() and not p.is_file():
-                 logger.warning(f"警告: '{p.name}' 不是一个文件，已跳过")
-                 # console.print(f"  [yellow]警告:[/yellow] '{p.name}' 不是一个文件，已跳过。")
+            elif p.exists() and not (p.is_file() or p.is_dir()):
+                 logger.warning(f"警告: '{p.name}' 不是文件或文件夹，已跳过")
+                 # console.print(f"  [yellow]警告:[/yellow] '{p.name}' 不是文件或文件夹，已跳过。")
             else:
                  # 打印原始带引号的路径，如果去引号后仍找不到，方便调试
-                 logger.error(f"错误: 文件 '{file_path_raw}' (或处理后的 '{file_path}') 不存在或路径无效，已跳过")
-                 # console.print(f"  [red]错误:[/red] 文件 '{file_path_raw}' (或处理后的 '{file_path}') 不存在或路径无效，已跳过。")
+                 logger.error(f"错误: 路径 '{file_path_raw}' (或处理后的 '{file_path}') 不存在或路径无效，已跳过")
+                 # console.print(f"  [red]错误:[/red] 路径 '{file_path_raw}' (或处理后的 '{file_path}') 不存在或路径无效，已跳过。")
 
         except KeyboardInterrupt:
             logger.error("操作已中断")
@@ -195,7 +195,40 @@ def get_source_files_interactively() -> list[str]:
             logger.error(f"输入时发生错误: {e}")
             # console.print(f"[red]输入时发生错误: {e}[/red]")
 
-    return source_files
+    return source_paths
+
+
+def collect_files_from_paths(source_paths: list[str]) -> list[str]:
+    """从路径列表（文件和文件夹）中收集所有文件。
+    
+    Args:
+        source_paths: 包含文件和文件夹路径的列表
+        
+    Returns:
+        所有文件路径的列表
+    """
+    all_files = []
+    
+    for path_str in source_paths:
+        path = Path(path_str)
+        
+        if path.is_file():
+            # 如果是文件，直接添加
+            all_files.append(str(path))
+        elif path.is_dir():
+            # 如果是目录，递归收集所有文件
+            try:
+                for file_path in path.rglob('*'):
+                    if file_path.is_file():
+                        all_files.append(str(file_path))
+                logger.info(f"从文件夹 '{path}' 收集了 {len([f for f in path.rglob('*') if Path(f).is_file()])} 个文件")
+            except Exception as e:
+                logger.error(f"扫描文件夹 '{path}' 时出错: {e}")
+        else:
+            logger.warning(f"跳过无效路径: {path}")
+    
+    logger.info(f"总共收集了 {len(all_files)} 个文件")
+    return all_files
 
 
 # --- 新增：处理单个文件的函数 ---
@@ -388,20 +421,23 @@ def get_target_dir_interactively():
 
 @app.command()
 def migrate(
-    files: List[Path] = typer.Argument(None, help="要迁移的文件列表"),
-    clipboard: bool = typer.Option(False, "--clipboard", "-c", help="从剪贴板读取文件路径"),
+    files: List[Path] = typer.Argument(None, help="要迁移的文件和文件夹列表"),
+    clipboard: bool = typer.Option(False, "--clipboard", "-c", help="从剪贴板读取文件和文件夹路径"),
     target: Optional[Path] = typer.Option(None, "--target", "-t", help="目标文件夹路径"),
     threads: Optional[int] = typer.Option(None, "--threads", help="使用的线程数量"),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="启用交互式界面"),
     copy: bool = typer.Option(False, "--copy", help="复制文件而不是移动"),
     move: bool = typer.Option(True, "--move", help="移动文件而不是复制"),
 ):
-    """迁移文件，并保持目录结构"""    # 如果指定了交互式界面或没有任何参数，启动交互式界面
+    """迁移文件和文件夹，并保持目录结构"""    # 如果指定了交互式界面或没有任何参数，启动交互式界面
     if interactive or not files:
-        # 交互式获取源文件
-        source_files = get_source_files_interactively()
+        # 交互式获取源路径（文件和文件夹）
+        source_paths = get_source_paths_interactively()
         # 交互式获取目标目录
-        if source_files:
+        if source_paths:
+            # 从路径中收集所有文件
+            source_files = collect_files_from_paths(source_paths)
+            
             target_dir = get_target_dir_interactively()
             # 询问操作类型
             action_choice = Prompt.ask(
@@ -416,7 +452,7 @@ def migrate(
         return
     
     # 命令行模式
-    source_files = []
+    source_paths = []
       # 从剪贴板获取文件路径
     if clipboard:
         try:
@@ -424,17 +460,20 @@ def migrate(
             paths_from_clipboard = [p.strip() for p in clipboard_content.splitlines() if p.strip()]
             for path_str in paths_from_clipboard:
                 path = Path(path_str)
-                if path.exists() and path.is_file():
-                    source_files.append(str(path))
+                if path.exists() and (path.is_file() or path.is_dir()):
+                    source_paths.append(str(path))
         except Exception as e:
             logger.error(f"从剪贴板读取路径时出错: {e}")
             # typer.echo(f"从剪贴板读取路径时出错: {e}", err=True)
     
-    # 添加命令行指定的文件
+    # 添加命令行指定的文件和文件夹
     if files:
         for file_path in files:
-            if file_path.exists() and file_path.is_file():
-                source_files.append(str(file_path))
+            if file_path.exists() and (file_path.is_file() or file_path.is_dir()):
+                source_paths.append(str(file_path))
+    
+    # 从路径中收集所有文件
+    source_files = collect_files_from_paths(source_paths)
     
     # 确保有文件要迁移
     if not source_files:
@@ -467,10 +506,13 @@ def main():
     """主入口函数"""
     # 检查是否没有提供任何参数，直接启动交互式界面
     if len(sys.argv) == 1:
-        # 交互式获取源文件
-        source_files = get_source_files_interactively()
+        # 交互式获取源路径（文件和文件夹）
+        source_paths = get_source_paths_interactively()
         # 交互式获取目标目录
-        if source_files:
+        if source_paths:
+            # 从路径中收集所有文件
+            source_files = collect_files_from_paths(source_paths)
+            
             target_dir = get_target_dir_interactively()
             # 询问操作类型
             action_choice = Prompt.ask(
