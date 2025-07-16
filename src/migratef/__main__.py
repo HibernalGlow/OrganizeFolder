@@ -548,14 +548,20 @@ def migrate(
             target_dir = get_target_dir_interactively()
             
             # 询问迁移模式
-            migration_mode = Prompt.ask(
-                "[bold cyan]请选择迁移模式[/bold cyan]\n"
-                "  [bold]preserve[/bold] - 保持目录结构迁移\n"
-                "  [bold]flat[/bold] - 扁平迁移（只迁移文件，不保持目录结构）\n"
-                "  [bold]direct[/bold] - 直接迁移（类似mv命令，整个文件/文件夹作为单位）",
-                choices=["preserve", "flat", "direct"],
-                default="preserve"
-            ).lower()
+            console.print("[bold cyan]请选择迁移模式[/bold cyan]")
+            console.print("  [bold blue]1[/bold blue] - preserve - 保持目录结构迁移")
+            console.print("  [bold blue]2[/bold blue] - flat - 扁平迁移（只迁移文件，不保持目录结构）")
+            console.print("  [bold blue]3[/bold blue] - direct - 直接迁移（类似mv命令，整个文件/文件夹作为单位）")
+            
+            migration_choice = Prompt.ask(
+                "请输入选项编号",
+                choices=["1", "2", "3"],
+                default="1"
+            )
+            
+            # 将数字选择转换为模式名称
+            migration_modes = {"1": "preserve", "2": "flat", "3": "direct"}
+            migration_mode = migration_modes[migration_choice]
             
             # 询问操作类型
             action_choice = Prompt.ask(
@@ -650,14 +656,20 @@ def main():
             target_dir = get_target_dir_interactively()
             
             # 询问迁移模式
-            migration_mode = Prompt.ask(
-                "[bold cyan]请选择迁移模式[/bold cyan]\n"
-                "  [bold]preserve[/bold] - 保持目录结构迁移\n"
-                "  [bold]flat[/bold] - 扁平迁移（只迁移文件，不保持目录结构）\n"
-                "  [bold]direct[/bold] - 直接迁移（类似mv命令，整个文件/文件夹作为单位）",
-                choices=["preserve", "flat", "direct"],
-                default="preserve"
-            ).lower()
+            console.print("[bold cyan]请选择迁移模式[/bold cyan]")
+            console.print("  [bold blue]1[/bold blue] - preserve - 保持目录结构迁移")
+            console.print("  [bold blue]2[/bold blue] - flat - 扁平迁移（只迁移文件，不保持目录结构）")
+            console.print("  [bold blue]3[/bold blue] - direct - 直接迁移（类似mv命令，整个文件/文件夹作为单位）")
+            
+            migration_choice = Prompt.ask(
+                "请输入选项编号",
+                choices=["1", "2", "3"],
+                default="1"
+            )
+            
+            # 将数字选择转换为模式名称
+            migration_modes = {"1": "preserve", "2": "flat", "3": "direct"}
+            migration_mode = migration_modes[migration_choice]
             
             # 询问操作类型
             action_choice = Prompt.ask(
