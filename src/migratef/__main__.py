@@ -198,11 +198,101 @@ def get_source_paths_interactively() -> list[str]:
     return source_paths
 
 
-def collect_files_from_paths(source_paths: list[str]) -> list[str]:
+def migrate_paths_directly(source_paths: list[str], target_root_dir: str, action: str = 'copy'):
+    """
+    直接迁移文件和文件夹到目标目录（类似 mv 命令）
+    
+    Args:
+        source_paths: 源文件和文件夹路径列表
+        target_root_dir: 目标根目录
+        action: 操作类型，'copy' 或 'move'
+    """
+    if not source_paths:
+        logger.warning("没有需要迁移的文件或文件夹")
+        return
+
+    try:
+        target_root = Path(target_root_dir).resolve()
+        target_root.mkdir(parents=True, exist_ok=True)
+        logger.info(f"目标根目录: {target_root}")
+        logger.info(f"迁移模式: 直接迁移")
+    except Exception as e:
+        logger.error(f"错误：无法创建或访问目标目录 '{target_root_dir}': {e}")
+        return
+
+    counters = {'migrated': 0, 'error': 0, 'skipped': 0}
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TextColumn("•"),
+        TextColumn("[{task.completed}/{task.total}]"),
+        TextColumn("•"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False
+    ) as progress:
+        
+        task_id = progress.add_task("[cyan]正在迁移文件和文件夹...", total=len(source_paths))
+        
+        for source_path_str in source_paths:
+            source_path = Path(source_path_str).resolve()
+            item_name = source_path.name
+            
+            try:
+                if not source_path.exists():
+                    logger.warning(f"跳过: 源 '{item_name}' 不存在")
+                    counters['skipped'] += 1
+                    progress.update(task_id, advance=1, description=f"[yellow]跳过:[/yellow] [dim]{item_name}[/dim]")
+                    continue
+                
+                target_path = target_root / item_name
+                
+                # 检查目标是否已存在
+                if target_path.exists():
+                    logger.warning(f"跳过: 目标 '{target_path}' 已存在")
+                    counters['skipped'] += 1
+                    progress.update(task_id, advance=1, description=f"[yellow]跳过(已存在):[/yellow] [dim]{item_name}[/dim]")
+                    continue
+                
+                if action == 'move':
+                    shutil.move(str(source_path), str(target_path))
+                    counters['migrated'] += 1
+                    progress.update(task_id, advance=1, description=f"[blue]移动:[/blue] [dim]{item_name}[/dim]")
+                else:  # copy
+                    if source_path.is_file():
+                        shutil.copy2(source_path, target_path)
+                    else:  # directory
+                        shutil.copytree(source_path, target_path)
+                    counters['migrated'] += 1
+                    progress.update(task_id, advance=1, description=f"[green]复制:[/green] [dim]{item_name}[/dim]")
+                    
+            except Exception as e:
+                action_verb = "移动" if action == 'move' else "复制"
+                logger.error(f"错误: {action_verb} '{item_name}' 到 '{target_root}' 时出错: {e}")
+                counters['error'] += 1
+                progress.update(task_id, advance=1, description=f"[red]错误({action}):[/red] [dim]{item_name}[/dim]")
+    
+    # 输出总结
+    action_verb_past = "移动" if action == 'move' else "复制"
+    logger.info(f"迁移总结 ({action_verb_past}):")
+    logger.info(f"  成功{action_verb_past}: {counters['migrated']} 个项目")
+    if counters['skipped'] > 0:
+        logger.warning(f"  跳过项目: {counters['skipped']} 个")
+    if counters['error'] > 0:
+        logger.error(f"  遇到错误: {counters['error']} 个项目")
+    else:
+        logger.info(f"  遇到错误: 0 个项目")
+
+
+def collect_files_from_paths(source_paths: list[str], preserve_structure: bool = True) -> list[str]:
     """从路径列表（文件和文件夹）中收集所有文件。
     
     Args:
         source_paths: 包含文件和文件夹路径的列表
+        preserve_structure: 是否保持目录结构，如果为False则只处理直接输入的文件
         
     Returns:
         所有文件路径的列表
@@ -216,14 +306,26 @@ def collect_files_from_paths(source_paths: list[str]) -> list[str]:
             # 如果是文件，直接添加
             all_files.append(str(path))
         elif path.is_dir():
-            # 如果是目录，递归收集所有文件
-            try:
-                for file_path in path.rglob('*'):
-                    if file_path.is_file():
-                        all_files.append(str(file_path))
-                logger.info(f"从文件夹 '{path}' 收集了 {len([f for f in path.rglob('*') if Path(f).is_file()])} 个文件")
-            except Exception as e:
-                logger.error(f"扫描文件夹 '{path}' 时出错: {e}")
+            if preserve_structure:
+                # 保持目录结构模式：递归收集所有文件
+                try:
+                    for file_path in path.rglob('*'):
+                        if file_path.is_file():
+                            all_files.append(str(file_path))
+                    logger.info(f"从文件夹 '{path}' 收集了 {len([f for f in path.rglob('*') if Path(f).is_file()])} 个文件")
+                except Exception as e:
+                    logger.error(f"扫描文件夹 '{path}' 时出错: {e}")
+            else:
+                # 扁平迁移模式：只收集第一层的文件
+                try:
+                    files_count = 0
+                    for item in path.iterdir():
+                        if item.is_file():
+                            all_files.append(str(item))
+                            files_count += 1
+                    logger.info(f"从文件夹 '{path}' 的第一层收集了 {files_count} 个文件")
+                except Exception as e:
+                    logger.error(f"扫描文件夹 '{path}' 时出错: {e}")
         else:
             logger.warning(f"跳过无效路径: {path}")
     
@@ -232,7 +334,7 @@ def collect_files_from_paths(source_paths: list[str]) -> list[str]:
 
 
 # --- 新增：处理单个文件的函数 ---
-def process_single_file(source_file_str: str, target_root: Path, progress: Progress, task_id, lock: Lock, counters: dict, action: str = 'copy'):
+def process_single_file(source_file_str: str, target_root: Path, progress: Progress, task_id, lock: Lock, counters: dict, action: str = 'copy', preserve_structure: bool = True):
     """处理单个文件的迁移逻辑。"""
     source_file = Path(source_file_str).resolve()
     file_name = source_file.name # 提前获取文件名，避免后续路径问题
@@ -247,21 +349,24 @@ def process_single_file(source_file_str: str, target_root: Path, progress: Progr
             progress.update(task_id, advance=1, description=f"[yellow]跳过:[/yellow] [dim]{file_name}[/dim]")
             return "skipped"
 
-        # --- 确定相对路径 ---
-        try:
-            drive, path_without_drive = os.path.splitdrive(source_file)
-            relative_parts = path_without_drive.strip(os.sep).split(os.sep)
-            relative_path = Path(*relative_parts)
-        except Exception as e:
-            with lock:
-                logger.error(f"错误: 无法确定文件 '{file_name}' 的相对路径: {e}")
-                # console.print(f"  [red]错误:[/red] 无法确定文件 '{file_name}' 的相对路径: {e}。")
-                counters['error'] += 1
-            progress.update(task_id, advance=1, description=f"[red]错误(路径):[/red] [dim]{file_name}[/dim]")
-            return "error"
-
-        # --- 构造目标路径 ---
-        target_file_path = target_root / relative_path
+        # --- 确定目标路径 ---
+        if preserve_structure:
+            # 保持目录结构模式
+            try:
+                drive, path_without_drive = os.path.splitdrive(source_file)
+                relative_parts = path_without_drive.strip(os.sep).split(os.sep)
+                relative_path = Path(*relative_parts)
+                target_file_path = target_root / relative_path
+            except Exception as e:
+                with lock:
+                    logger.error(f"错误: 无法确定文件 '{file_name}' 的相对路径: {e}")
+                    # console.print(f"  [red]错误:[/red] 无法确定文件 '{file_name}' 的相对路径: {e}。")
+                    counters['error'] += 1
+                progress.update(task_id, advance=1, description=f"[red]错误(路径):[/red] [dim]{file_name}[/dim]")
+                return "error"
+        else:
+            # 扁平迁移模式 - 直接放到目标目录
+            target_file_path = target_root / file_name
 
         # --- 创建目标目录 (需要加锁保护，防止多线程同时创建) ---
         try:
@@ -309,9 +414,9 @@ def process_single_file(source_file_str: str, target_root: Path, progress: Progr
 # --- 函数结束 ---
 
 
-def migrate_files_with_structure(source_file_paths: list[str], target_root_dir: str, max_workers: int | None = None, action: str = 'copy'):
+def migrate_files_with_structure(source_file_paths: list[str], target_root_dir: str, max_workers: int | None = None, action: str = 'copy', preserve_structure: bool = True):
     """
-    将指定的文件列表迁移（复制或移动）到目标根目录，并保留其原始的目录结构，
+    将指定的文件列表迁移（复制或移动）到目标根目录，并可选择保留其原始的目录结构，
     使用 Rich 进行输出美化和进度显示，并支持多线程。
 
     Args:
@@ -319,6 +424,7 @@ def migrate_files_with_structure(source_file_paths: list[str], target_root_dir: 
         target_root_dir: 文件将被迁移到的目标根目录路径。
         max_workers: 使用的最大线程数。默认为 None (os.cpu_count())。
         action: 操作类型，'copy' 或 'move'。默认为 'copy'。
+        preserve_structure: 是否保持目录结构。True为保持，False为扁平迁移。
     """
     if not source_file_paths:
         logger.warning("没有需要迁移的文件")
@@ -328,7 +434,9 @@ def migrate_files_with_structure(source_file_paths: list[str], target_root_dir: 
     try:
         target_root = Path(target_root_dir).resolve()
         target_root.mkdir(parents=True, exist_ok=True)
+        structure_mode = "保持目录结构" if preserve_structure else "扁平迁移"
         logger.info(f"目标根目录: {target_root}")
+        logger.info(f"迁移模式: {structure_mode}")
         logger.info(f"使用线程数: {max_workers or os.cpu_count()}")
         # console.print(f"\n[bold green]目标根目录:[/bold green] {target_root}")
         # console.print(f"[bold blue]使用线程数:[/bold blue] {max_workers or os.cpu_count()}") # 显示使用的线程数
@@ -363,7 +471,7 @@ def migrate_files_with_structure(source_file_paths: list[str], target_root_dir: 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # 创建 future 列表
             futures = [
-                executor.submit(process_single_file, file_path, target_root, progress, task_id, lock, counters, action) # 传递 action
+                executor.submit(process_single_file, file_path, target_root, progress, task_id, lock, counters, action, preserve_structure) # 传递 preserve_structure
                 for file_path in source_file_paths
             ]
 
@@ -428,27 +536,46 @@ def migrate(
     interactive: bool = typer.Option(False, "--interactive", "-i", help="启用交互式界面"),
     copy: bool = typer.Option(False, "--copy", help="复制文件而不是移动"),
     move: bool = typer.Option(True, "--move", help="移动文件而不是复制"),
+    flat: bool = typer.Option(False, "--flat", "-f", help="扁平迁移模式，不保持目录结构（类似mv命令）"),
+    direct: bool = typer.Option(False, "--direct", "-d", help="直接迁移模式，整个文件/文件夹作为一个单位迁移"),
 ):
-    """迁移文件和文件夹，并保持目录结构"""    # 如果指定了交互式界面或没有任何参数，启动交互式界面
+    """迁移文件和文件夹，支持保持目录结构或扁平迁移"""    # 如果指定了交互式界面或没有任何参数，启动交互式界面
     if interactive or not files:
         # 交互式获取源路径（文件和文件夹）
         source_paths = get_source_paths_interactively()
         # 交互式获取目标目录
         if source_paths:
-            # 从路径中收集所有文件
-            source_files = collect_files_from_paths(source_paths)
-            
             target_dir = get_target_dir_interactively()
+            
+            # 询问迁移模式
+            migration_mode = Prompt.ask(
+                "[bold cyan]请选择迁移模式[/bold cyan]\n"
+                "  [bold]preserve[/bold] - 保持目录结构迁移\n"
+                "  [bold]flat[/bold] - 扁平迁移（只迁移文件，不保持目录结构）\n"
+                "  [bold]direct[/bold] - 直接迁移（类似mv命令，整个文件/文件夹作为单位）",
+                choices=["preserve", "flat", "direct"],
+                default="preserve"
+            ).lower()
+            
             # 询问操作类型
             action_choice = Prompt.ask(
                 "[bold cyan]请选择操作类型 ([i]copy[/i]/[i]move[/i])[/bold cyan]",
                 choices=["copy", "move"],
                 default="move"
             ).lower()
-            # 询问线程数
-            num_threads = 16
-            # 执行迁移
-            migrate_files_with_structure(source_files, target_dir, max_workers=num_threads, action=action_choice)
+            
+            # 根据迁移模式执行不同的逻辑
+            if migration_mode == "direct":
+                # 直接迁移模式
+                migrate_paths_directly(source_paths, target_dir, action=action_choice)
+            else:
+                # 文件级迁移模式
+                preserve_structure = (migration_mode == "preserve")
+                source_files = collect_files_from_paths(source_paths, preserve_structure=preserve_structure)
+                # 询问线程数
+                num_threads = 16
+                # 执行迁移
+                migrate_files_with_structure(source_files, target_dir, max_workers=num_threads, action=action_choice, preserve_structure=preserve_structure)
         return
     
     # 命令行模式
@@ -472,12 +599,9 @@ def migrate(
             if file_path.exists() and (file_path.is_file() or file_path.is_dir()):
                 source_paths.append(str(file_path))
     
-    # 从路径中收集所有文件
-    source_files = collect_files_from_paths(source_paths)
-    
     # 确保有文件要迁移
-    if not source_files:
-        logger.error("错误: 没有有效的源文件。使用 --interactive 选项启动交互式界面")
+    if not source_paths:
+        logger.error("错误: 没有有效的源文件或文件夹。使用 --interactive 选项启动交互式界面")
         # typer.echo("错误: 没有有效的源文件。使用 --interactive 选项启动交互式界面。", err=True)
         raise typer.Exit(code=1)
     
@@ -499,8 +623,21 @@ def migrate(
     # 确定操作类型
     action = "copy" if copy else "move"
     
-    # 执行迁移
-    migrate_files_with_structure(source_files, str(target), max_workers=threads, action=action)
+    # 根据模式执行迁移
+    if direct:
+        # 直接迁移模式
+        migrate_paths_directly(source_paths, str(target), action=action)
+    else:
+        # 文件级迁移模式
+        preserve_structure = not flat  # flat为True时，preserve_structure为False
+        source_files = collect_files_from_paths(source_paths, preserve_structure=preserve_structure)
+        
+        if not source_files:
+            logger.error("错误: 没有找到可迁移的文件")
+            raise typer.Exit(code=1)
+        
+        # 执行迁移
+        migrate_files_with_structure(source_files, str(target), max_workers=threads, action=action, preserve_structure=preserve_structure)
 
 def main():
     """主入口函数"""
@@ -510,18 +647,35 @@ def main():
         source_paths = get_source_paths_interactively()
         # 交互式获取目标目录
         if source_paths:
-            # 从路径中收集所有文件
-            source_files = collect_files_from_paths(source_paths)
-            
             target_dir = get_target_dir_interactively()
+            
+            # 询问迁移模式
+            migration_mode = Prompt.ask(
+                "[bold cyan]请选择迁移模式[/bold cyan]\n"
+                "  [bold]preserve[/bold] - 保持目录结构迁移\n"
+                "  [bold]flat[/bold] - 扁平迁移（只迁移文件，不保持目录结构）\n"
+                "  [bold]direct[/bold] - 直接迁移（类似mv命令，整个文件/文件夹作为单位）",
+                choices=["preserve", "flat", "direct"],
+                default="preserve"
+            ).lower()
+            
             # 询问操作类型
             action_choice = Prompt.ask(
                 "[bold cyan]请选择操作类型 ([i]copy[/i]/[i]move[/i])[/bold cyan]",
                 choices=["copy", "move"],
                 default="move"
             ).lower()
-            # 执行迁移
-            migrate_files_with_structure(source_files, target_dir, max_workers=16, action=action_choice)
+            
+            # 根据迁移模式执行不同的逻辑
+            if migration_mode == "direct":
+                # 直接迁移模式
+                migrate_paths_directly(source_paths, target_dir, action=action_choice)
+            else:
+                # 文件级迁移模式
+                preserve_structure = (migration_mode == "preserve")
+                source_files = collect_files_from_paths(source_paths, preserve_structure=preserve_structure)
+                # 执行迁移
+                migrate_files_with_structure(source_files, target_dir, max_workers=16, action=action_choice, preserve_structure=preserve_structure)
         return
     
     # 使用 Typer 处理命令行
