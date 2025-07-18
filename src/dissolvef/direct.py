@@ -72,7 +72,7 @@ def handle_name_conflict(target_path, is_dir=False, mode='auto'):
                 return new_path, True
             counter += 1
 
-def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', preview=False):
+def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', preview=False, use_status=True):
     """
     将指定文件夹中的所有内容移动到其父文件夹中，然后删除该文件夹
     
@@ -81,6 +81,7 @@ def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', preview=Fal
     file_conflict (str): 文件冲突处理方式 ('auto'/'skip'/'overwrite'/'rename')
     dir_conflict (str): 文件夹冲突处理方式 ('auto'/'skip'/'overwrite'/'rename')
     preview (bool): 如果为True，只预览操作不实际执行
+    use_status (bool): 是否使用状态指示器
     
     返回:
     tuple: (bool, int, int) - (是否成功, 移动的文件数量, 移动的文件夹数量)
@@ -92,7 +93,8 @@ def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', preview=Fal
     try:
         # 转换路径为绝对路径
         path = Path(path).resolve()
-          # 检查路径有效性
+        
+        # 检查路径有效性
         if not path.exists() or not path.is_dir():
             message = f"错误：{path} 不是一个有效的文件夹"
             logger.error(message)
@@ -108,8 +110,9 @@ def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', preview=Fal
             console.print(f"[bold cyan]预览模式:[/bold cyan] 不会实际移动文件")
         
         # 创建一个Rich状态指示器
-        status = Status("正在扫描文件夹内容...", spinner="dots")
-        if not preview:
+        status = None
+        if use_status and not preview:
+            status = Status("正在扫描文件夹内容...", spinner="dots")
             status.start()
         
         # 获取所有项目并排序（文件优先）
@@ -122,7 +125,7 @@ def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', preview=Fal
             target_path = parent_dir / item.name
             is_dir = item.is_dir()
               # 更新状态
-            if not preview:
+            if status and not preview:
                 status.update(f"处理: {item.name}")
             
             # 处理名称冲突
@@ -138,10 +141,8 @@ def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', preview=Fal
             
             # 记录操作    
             message = f"{'将' if preview else ''}移动: {item.name} -> {target_path}"
-            if logger:
-                logger.info(message)
-            else:
-                console.print(message)
+            logger.info(message)
+            console.print(message)
             
             # 如果不是预览模式，实际执行移动
             if not preview:
@@ -246,7 +247,7 @@ def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', preview=Fal
         return False, moved_files, moved_dirs
     finally:
         # 确保状态指示器被停止
-        if logger is None and not preview and 'status' in locals() and status.started:
+        if status and not preview and status.started:
             status.stop()
 
 # 直接运行此文件时的入口点
@@ -279,6 +280,7 @@ if __name__ == "__main__":
     
     mode_text = "预览" if args.preview else "执行"
     if success or args.preview:
+
         console.print(f"解散操作{mode_text}完成，{'将' if args.preview else '已'}移动 [green]{files_count}[/green] 个文件和 [green]{dirs_count}[/green] 个文件夹")
     else:
         console.print(f"[yellow]警告：解散操作未完全成功，已移动 {files_count} 个文件和 {dirs_count} 个文件夹，但原文件夹未删除[/yellow]")

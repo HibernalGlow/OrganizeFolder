@@ -295,8 +295,8 @@ def run_interactive() -> None:
                 path, 
                 file_conflict=file_conflict,
                 dir_conflict=dir_conflict,
-                logger=rich_logger,
-                preview=preview_mode
+                preview=preview_mode,
+                use_status=False
             )
             if success or preview_mode:
                 total_dissolved_folders += 1
@@ -430,7 +430,6 @@ def dissolve(
                 path, 
                 file_conflict=str(file_conflict),
                 dir_conflict=str(dir_conflict),
-                logger=logger,
                 preview=preview
             )
             if success or preview:
@@ -474,10 +473,5 @@ def dissolve(
         typer.echo("注意：这是预览模式，实际操作未执行")
 
 if __name__ == "__main__":
-    try:
-        app()
-    except KeyboardInterrupt:
-        logger.info("\n操作已取消")
-    except Exception as e:
-        logger.error(f"发生错误: {e}")
-        sys.exit(1)
+
+    app()

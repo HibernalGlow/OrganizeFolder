@@ -1,0 +1,16 @@
+{
+  "auto_extract": {
+    "enabled": true,
+    "delete_after_extract": true,
+    "dissolve_folder": true,
+    "monitor_mode": true
+  },
+  "passwords": {
+    "config_file": "passwords.json"
+  },
+  "ui": {
+    "ask_confirmation": false,
+    "show_progress": true
+  },
+  "description": "passt 压缩包解压工具配置文件"
+}
