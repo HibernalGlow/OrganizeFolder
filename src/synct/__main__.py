@@ -98,6 +98,33 @@ def is_timestamp_folder(folder_name, format_key):
     except ValueError:
         return False
 
+def get_first_level_timestamp_folder(base_dst, format_key, dt):
+    """获取第一级时间戳文件夹的完整路径"""
+    try:
+        format_spec = FORMATS.get(format_key)
+        if not format_spec:
+            return None
+
+        if isinstance(format_spec, list):
+            # 多层格式，第一级是第一个格式
+            first_level_name = dt.strftime(format_spec[0])
+        else:
+            # 单层格式，就是这个格式
+            first_level_name = dt.strftime(format_spec)
+
+        first_level_path = os.path.join(base_dst, first_level_name)
+
+        # 确保路径存在
+        if os.path.exists(first_level_path):
+            return first_level_path
+        else:
+            logger.debug(f"第一级时间戳文件夹不存在: {first_level_path}")
+            return None
+
+    except Exception as e:
+        logger.warning(f"获取第一级时间戳文件夹失败: {e}")
+        return None
+
 def process_single_folder(path, base_dst, format_key, mode):
     """处理单个文件夹的归档操作"""
     operations = []
@@ -107,6 +134,12 @@ def process_single_folder(path, base_dst, format_key, mode):
 
     for name in os.listdir(path):
         item_path = os.path.join(path, name)
+
+        # 检查文件夹是否存在（可能在扫描过程中被删除）
+        if not os.path.exists(item_path):
+            logger.warning(f"文件夹在处理过程中消失，跳过: {item_path}")
+            continue
+
         # 如果base_dst等于path（直接创建模式），则跳过已经是时间戳格式的文件夹
         if item_path == base_dst:
             continue
@@ -387,6 +420,9 @@ def main():
     if Confirm.ask("确认执行以上操作？", default=True):
         logger.info("用户确认执行归档操作")
 
+        # 用于收集所有创建的第一级时间戳文件夹
+        created_timestamp_folders = set()
+
         # 按路径分组执行
         for path in paths:
             path_folders = [(folder_path, dt, name) for folder_path, dt, name in all_folders_with_timestamp
@@ -397,7 +433,7 @@ def main():
 
             console.print(f"\n[bold]处理路径: {path}[/bold]")
 
-            # 确定归档目录
+            # 确定归档目录（与预览阶段保持一致）
             if archive_strategy == "independent":
                 if use_archive_folder:
                     current_base_dst = os.path.join(path, '归档')
@@ -410,14 +446,74 @@ def main():
                 logger.info(f"处理文件夹: {name}, 时间戳: {dt}")
                 console.print(f"[green]处理: {name} -> {dt}")
 
-                if sync_time:
-                    logger.info(f"同步文件时间: {folder_path}")
-                    sync_folder_file_time(folder_path, dt)
-                    console.print(f"[blue]已同步文件时间: {folder_path}")
+                # 检查源文件夹是否存在
+                if not os.path.exists(folder_path):
+                    logger.warning(f"源文件夹不存在，跳过: {folder_path}")
+                    console.print(f"[yellow]⚠️ 源文件夹不存在，跳过: {name}")
+                    continue
 
-                new_path = archive_folder(folder_path, dt, current_base_dst, format_key)
-                logger.info(f"已归档到: {new_path}")
-                console.print(f"[cyan]已归档到: {new_path}")
+                try:
+                    if sync_time:
+                        logger.info(f"同步文件时间: {folder_path}")
+                        sync_folder_file_time(folder_path, dt)
+                        console.print(f"[blue]已同步文件时间: {folder_path}")
+
+                    new_path = archive_folder(folder_path, dt, current_base_dst, format_key)
+                    logger.info(f"已归档到: {new_path}")
+                    console.print(f"[cyan]已归档到: {new_path}")
+
+                    # 收集第一级时间戳文件夹
+                    first_level_folder = get_first_level_timestamp_folder(current_base_dst, format_key, dt)
+                    if first_level_folder:
+                        created_timestamp_folders.add(first_level_folder)
+
+                except FileNotFoundError as e:
+                    logger.warning(f"文件操作失败，跳过 {name}: {e}")
+                    console.print(f"[yellow]⚠️ 文件操作失败，跳过: {name}")
+                    continue
+                except Exception as e:
+                    logger.error(f"处理文件夹 {name} 时发生错误: {e}")
+                    console.print(f"[red]❌ 处理文件夹 {name} 时发生错误: {e}")
+                    continue
+        # 输出和保存第一级时间戳文件夹
+        if created_timestamp_folders:
+            console.print(f"\n[bold green]归档完成！[/bold green]")
+            console.print(f"[bold]创建的第一级时间戳文件夹 ({len(created_timestamp_folders)} 个):[/bold]")
+
+            # 排序输出
+            sorted_folders = sorted(created_timestamp_folders)
+            for i, folder_path in enumerate(sorted_folders, 1):
+                console.print(f"  {i}. [cyan]{folder_path}[/cyan]")
+                logger.info(f"第一级时间戳文件夹 {i}: {folder_path}")
+
+            # 保存到文件
+            timestamp_folders_file = os.path.join(paths[0], "synct_timestamp_folders.txt")
+            try:
+                with open(timestamp_folders_file, "w", encoding="utf-8") as f:
+                    f.write("# synct 归档完成后创建的第一级时间戳文件夹\n")
+                    f.write(f"# 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"# 总计: {len(sorted_folders)} 个文件夹\n\n")
+                    for folder_path in sorted_folders:
+                        f.write(f"{folder_path}\n")
+
+                logger.info(f"第一级时间戳文件夹列表已保存到: {timestamp_folders_file}")
+                console.print(f"[blue]📁 第一级时间戳文件夹列表已保存到: {timestamp_folders_file}[/blue]")
+
+                # 复制到剪贴板（可选）
+                try:
+                    import pyperclip
+                    clipboard_content = "\n".join(sorted_folders)
+                    pyperclip.copy(clipboard_content)
+                    console.print(f"[green]📋 文件夹路径已复制到剪贴板[/green]")
+                except Exception as e:
+                    logger.debug(f"复制到剪贴板失败: {e}")
+
+            except Exception as e:
+                logger.error(f"保存第一级时间戳文件夹列表失败: {e}")
+                console.print(f"[red]❌ 保存文件夹列表失败: {e}[/red]")
+        else:
+            console.print(f"\n[yellow]归档完成，但没有创建新的第一级时间戳文件夹[/yellow]")
+
     else:
         logger.warning("用户取消了操作")
         console.print("[yellow]操作已取消")

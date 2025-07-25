@@ -54,10 +54,25 @@ def archive_folder(src_folder, dt: datetime, base_dst, format_key='year_month', 
         console.print(f"[cyan]预览: 将 {src_folder} 移动到 {dst_folder}")
         return dst_folder
     
+    # 检查源文件夹是否存在
+    if not os.path.exists(src_folder):
+        error_msg = f"源文件夹不存在: {src_folder}"
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg)
+
     if not os.path.exists(dst):
         logger.debug(f"创建目录: {dst}")
-        os.makedirs(dst)
-    
+        os.makedirs(dst, exist_ok=True)
+
     logger.info(f"移动文件夹: {src_folder} -> {dst_folder}")
-    shutil.move(src_folder, dst_folder)
-    return dst_folder
+    try:
+        shutil.move(src_folder, dst_folder)
+        return dst_folder
+    except FileNotFoundError as e:
+        error_msg = f"移动文件夹失败，源文件夹可能已被移动或删除: {src_folder}"
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg) from e
+    except Exception as e:
+        error_msg = f"移动文件夹时发生未知错误: {src_folder} -> {dst_folder}"
+        logger.error(f"{error_msg}: {e}")
+        raise
