@@ -6,7 +6,7 @@ from rich.tree import Tree
 from rich import print as rprint
 import os
 import json
-from synct.core.input_path import get_path
+from synct.core.input_path import get_path, get_paths
 from synct.core.extract_timestamp import extract_timestamp_from_name
 from synct.core.sync_file_time import sync_folder_file_time
 from synct.core.archive_folders import archive_folder, FORMATS
@@ -79,116 +79,45 @@ def setup_logger(app_name="app", project_root=None, console_output=True):
 
 logger, config_info = setup_logger(app_name="synct", console_output=True)
 
-def main():
-    logger.info("开始执行时间戳文件同步与归档工具")
-    path = get_path()
-    if not path:
-        logger.warning("未获取到有效路径，程序退出")
-        return
-    
-    logger.info(f"工作目录: {path}")
-    base_dst = os.path.join(path, '归档')
-    
-    # 使用rich展示可用格式
-    console.print("[bold]可用的归档格式:[/bold]")
-    
-    # 创建单个表格，包含所有格式
-    format_table = Table(show_header=True)
-    format_table.add_column("序号", style="cyan")
-    format_table.add_column("格式名")
-    format_table.add_column("类型")
-    format_table.add_column("说明")
-    format_table.add_column("示例")
-    
-    # 将格式名称与序号映射
-    format_index_map = {}
-    format_index = 1
-    
-    # 先添加单层格式
-    for key, format_spec in FORMATS.items():
-        if not isinstance(format_spec, list):
-            # 单层格式
-            sample = datetime.now().strftime(format_spec)
-            format_table.add_row(
-                str(format_index),
-                key, 
-                "单层",
-                format_spec, 
-                sample
-            )
-            format_index_map[format_index] = key
-            format_index += 1
-    
-    # 再添加多层格式
-    for key, format_spec in FORMATS.items():
+def is_timestamp_folder(folder_name, format_key):
+    """检查文件夹名是否符合时间戳格式"""
+    try:
+        format_spec = FORMATS.get(format_key)
+        if not format_spec:
+            return False
+
         if isinstance(format_spec, list):
-            # 多层格式
-            example_path = ""
-            for fmt in format_spec:
-                example_path = os.path.join(example_path, datetime.now().strftime(fmt))
-            format_table.add_row(
-                str(format_index),
-                key, 
-                "多层",
-                "→".join(format_spec), 
-                example_path
-            )
-            format_index_map[format_index] = key
-            format_index += 1
-    
-    console.print(format_table)
-    
-    # 使用数字选择格式
-    max_index = max(format_index_map.keys())
-    format_index = IntPrompt.ask(
-        "请输入序号选择归档格式",
-        default=6,
-        show_choices=False,
-        show_default=True
-    )
-    
-    # 验证输入的序号是否有效
-    while format_index not in format_index_map:
-        logger.warning(f"用户输入了无效的序号: {format_index}")
-        console.print(f"[red]无效的序号，请输入1-{max_index}之间的数字")
-        format_index = IntPrompt.ask(
-            "请输入序号选择归档格式",
-            default=1,
-            show_choices=False,
-            show_default=True
-        )
-    
-    # 获取选择的格式
-    format_key = format_index_map[format_index]
-    logger.info(f"用户选择的归档格式: {format_key}")
-    console.print(f"已选择格式: [green]{format_key}")
-    
-    # 新增：模式选择
-    mode = IntPrompt.ask("请选择模式：1-按文件夹名识别时间戳，2-全部用创建时间戳", choices=["1", "2"], default=1)
-    if mode == 2:
-        logger.info("已选择模式2：全部用创建时间戳")
-        console.print("[green]已选择模式2：全部用创建时间戳[/green]")
-    else:
-        logger.info("已选择模式1：按文件夹名识别时间戳")
-        console.print("[green]已选择模式1：按文件夹名识别时间戳[/green]")
-    
-    # 收集所有操作用于预览
+            # 多层格式，检查是否匹配第一层
+            first_format = format_spec[0]
+            datetime.strptime(folder_name, first_format)
+            return True
+        else:
+            # 单层格式
+            datetime.strptime(folder_name, format_spec)
+            return True
+    except ValueError:
+        return False
+
+def process_single_folder(path, base_dst, format_key, mode):
+    """处理单个文件夹的归档操作"""
     operations = []
     folders_with_timestamp = []
-    
-    # 创建JSON树结构
-    preview_tree = {
-        "根目录": path,
-        "归档目录": base_dst,
-        "格式": format_key,
-        "文件夹": {}
-    }
-    
+
+    logger.info(f"处理文件夹: {path}")
+
     for name in os.listdir(path):
         item_path = os.path.join(path, name)
+        # 如果base_dst等于path（直接创建模式），则跳过已经是时间戳格式的文件夹
         if item_path == base_dst:
             continue
-        
+
+        # 如果是直接创建模式，跳过已经是时间戳格式的文件夹
+        if base_dst == path and os.path.isdir(item_path):
+            # 检查是否是时间戳格式的文件夹
+            if is_timestamp_folder(name, format_key):
+                logger.debug(f"跳过时间戳格式文件夹: {name}")
+                continue
+
         if mode == 2:
             # 模式2：全部用创建时间戳（包括文件和文件夹）
             ctime = os.stat(item_path).st_ctime
@@ -208,78 +137,287 @@ def main():
                 console.print(f"[yellow]未识别到时间戳: {name}，已用创建时间 {dt.strftime('%Y-%m-%d')} 作为时间戳")
             else:
                 logger.debug(f"从文件夹名 {name} 识别到时间戳: {dt}")
+
         folders_with_timestamp.append((item_path, dt, name))
-        
+
         # 预览
         preview_path = archive_folder(item_path, dt, base_dst, format_key, dry_run=True)
-        
+
         # 提取相对路径，更好地展示变化
         rel_dst = os.path.relpath(preview_path, base_dst)
-        
+
         operations.append({
             "folder": name,
             "timestamp": dt,
             "destination": preview_path,
-            "rel_destination": rel_dst
+            "rel_destination": rel_dst,
+            "source_path": path
         })
-        
-        # 添加到JSON树
-        preview_tree["文件夹"][name] = {
-            "识别时间": dt.strftime("%Y-%m-%d"),
-            "目标路径": rel_dst
-        }
+
+    return operations, folders_with_timestamp
+
+def main():
+    logger.info("开始执行时间戳文件同步与归档工具")
+    paths = get_paths()
+    if not paths:
+        logger.warning("未获取到有效路径，程序退出")
+        return
+
+    if len(paths) == 1:
+        logger.info(f"单文件夹模式，工作目录: {paths[0]}")
+        console.print(f"[green]工作目录: {paths[0]}[/green]")
+    else:
+        logger.info(f"多文件夹模式，获取到 {len(paths)} 个工作目录")
+        console.print(f"[green]多文件夹模式，获取到 {len(paths)} 个工作目录[/green]")
+        for i, path in enumerate(paths, 1):
+            logger.info(f"工作目录 {i}: {path}")
+            console.print(f"  {i}. {path}")
+
+    # 归档目录策略选择
+    console.print("\n[bold]归档目录策略选择:[/bold]")
+    if len(paths) == 1:
+        console.print("1. 在文件夹内创建'归档'目录")
+        console.print("2. 直接在当前文件夹下创建时间戳文件夹（不创建归档目录）")
+
+        strategy = IntPrompt.ask("请选择归档策略", choices=["1", "2"], default=2)
+
+        if strategy == 1:
+            archive_strategy = "independent"
+            use_archive_folder = True
+            logger.info("选择策略1：创建归档目录")
+        else:
+            archive_strategy = "independent"
+            use_archive_folder = False
+            logger.info("选择策略2：直接创建时间戳文件夹")
+    else:
+        console.print("1. 在每个文件夹内创建独立的'归档'目录")
+        console.print("2. 统一归档到第一个文件夹的'归档'目录")
+        console.print("3. 直接在各文件夹下创建时间戳文件夹（不创建归档目录）")
+
+        strategy = IntPrompt.ask("请选择归档策略", choices=["1", "2", "3"], default=3)
+
+        if strategy == 1:
+            archive_strategy = "independent"
+            use_archive_folder = True
+            logger.info("选择策略1：每个文件夹独立归档")
+        elif strategy == 2:
+            archive_strategy = "unified"
+            use_archive_folder = True
+            unified_base_dst = os.path.join(paths[0], '归档')
+            logger.info(f"选择策略2：统一归档到 {unified_base_dst}")
+        else:
+            archive_strategy = "independent"
+            use_archive_folder = False
+            logger.info("选择策略3：直接创建时间戳文件夹")
+    
+    # 使用rich展示可用格式
+    console.print("[bold]可用的归档格式:[/bold]")
+
+    # 创建单个表格，包含所有格式
+    format_table = Table(show_header=True)
+    format_table.add_column("序号", style="cyan")
+    format_table.add_column("格式名")
+    format_table.add_column("类型")
+    format_table.add_column("说明")
+    format_table.add_column("示例")
+
+    # 将格式名称与序号映射
+    format_index_map = {}
+    format_index = 1
+
+    # 先添加单层格式
+    for key, format_spec in FORMATS.items():
+        if not isinstance(format_spec, list):
+            # 单层格式
+            sample = datetime.now().strftime(format_spec)
+            format_table.add_row(
+                str(format_index),
+                key,
+                "单层",
+                format_spec,
+                sample
+            )
+            format_index_map[format_index] = key
+            format_index += 1
+
+    # 再添加多层格式
+    for key, format_spec in FORMATS.items():
+        if isinstance(format_spec, list):
+            # 多层格式
+            example_path = ""
+            for fmt in format_spec:
+                example_path = os.path.join(example_path, datetime.now().strftime(fmt))
+            format_table.add_row(
+                str(format_index),
+                key,
+                "多层",
+                "→".join(format_spec),
+                example_path
+            )
+            format_index_map[format_index] = key
+            format_index += 1
+
+    console.print(format_table)
+
+    # 使用数字选择格式
+    max_index = max(format_index_map.keys())
+    format_index = IntPrompt.ask(
+        "请输入序号选择归档格式",
+        default=6,
+        show_choices=False,
+        show_default=True
+    )
+
+    # 验证输入的序号是否有效
+    while format_index not in format_index_map:
+        logger.warning(f"用户输入了无效的序号: {format_index}")
+        console.print(f"[red]无效的序号，请输入1-{max_index}之间的数字")
+        format_index = IntPrompt.ask(
+            "请输入序号选择归档格式",
+            default=1,
+            show_choices=False,
+            show_default=True
+        )
+
+    # 获取选择的格式
+    format_key = format_index_map[format_index]
+    logger.info(f"用户选择的归档格式: {format_key}")
+    console.print(f"已选择格式: [green]{format_key}")
+
+    # 新增：模式选择
+    mode = IntPrompt.ask("请选择模式：1-按文件夹名识别时间戳，2-全部用创建时间戳", choices=["1", "2"], default=1)
+    if mode == 2:
+        logger.info("已选择模式2：全部用创建时间戳")
+        console.print("[green]已选择模式2：全部用创建时间戳[/green]")
+    else:
+        logger.info("已选择模式1：按文件夹名识别时间戳")
+        console.print("[green]已选择模式1：按文件夹名识别时间戳[/green]")
+
+    # 收集所有操作用于预览
+    all_operations = []
+    all_folders_with_timestamp = []
+
+    # 处理每个文件夹
+    for path in paths:
+        if archive_strategy == "independent":
+            if use_archive_folder:
+                base_dst = os.path.join(path, '归档')
+            else:
+                base_dst = path  # 直接在当前文件夹下创建
+        else:  # unified
+            base_dst = unified_base_dst
+
+        operations, folders_with_timestamp = process_single_folder(path, base_dst, format_key, mode)
+        all_operations.extend(operations)
+        all_folders_with_timestamp.extend(folders_with_timestamp)
+
+    # 创建JSON树结构
+    preview_tree = {
+        "处理模式": "多文件夹" if len(paths) > 1 else "单文件夹",
+        "归档策略": "独立归档" if archive_strategy == "independent" else "统一归档",
+        "格式": format_key,
+        "文件夹": {}
+    }
+
+    # 按源路径分组显示
+    for path in paths:
+        path_operations = [op for op in all_operations if op["source_path"] == path]
+        if path_operations:
+            preview_tree["文件夹"][path] = {}
+            for op in path_operations:
+                preview_tree["文件夹"][path][op["folder"]] = {
+                    "识别时间": op["timestamp"].strftime("%Y-%m-%d"),
+                    "目标路径": op["rel_destination"]
+                }
     
     # 显示预览表格
-    if not operations:
+    if not all_operations:
         logger.warning("没有找到符合条件的文件夹")
         console.print("[yellow]没有找到符合条件的文件夹")
         return
-    
-    # 保存预览JSON
-    preview_json_path = os.path.join(path, "timeu_preview.json")
+
+    # 保存预览JSON到第一个路径
+    preview_json_path = os.path.join(paths[0], "timeu_preview.json")
     with open(preview_json_path, "w", encoding="utf-8") as f:
         json.dump(preview_tree, f, ensure_ascii=False, indent=2)
     logger.info(f"预览已保存到: {preview_json_path}")
     console.print(f"[blue]预览已保存到: {preview_json_path}")
-        
+
     # 创建文件树形式的预览
     console.print("\n[bold]预览将要执行的操作:[/bold]")
-    
+
     # 创建根树
-    root_tree = Tree(f"[bold]{path}[/bold]")
-    
-    # 预览前三个文件夹（如果有的话）
-    show_count = min(3, len(operations))
-    for i, op in enumerate(operations[:show_count]):
-        folder_node = root_tree.add(f"[yellow]{op['folder']}[/yellow] -> [green]{op['rel_destination']}[/green]")
-        folder_node.add(f"[blue]识别时间戳: {op['timestamp'].strftime('%Y-%m-%d')}[/blue]")
-    
-    # 如果有更多文件夹，显示省略信息
-    if len(operations) > show_count:
-        root_tree.add(f"[dim]... 还有 {len(operations) - show_count} 个文件夹 (详见 timeu_preview.json)[/dim]")
-    
+    if len(paths) == 1:
+        root_tree = Tree(f"[bold]{paths[0]}[/bold]")
+    else:
+        root_tree = Tree(f"[bold]多文件夹处理 ({len(paths)} 个文件夹)[/bold]")
+
+    # 按路径分组显示预览
+    for path in paths:
+        path_operations = [op for op in all_operations if op["source_path"] == path]
+        if path_operations:
+            if len(paths) > 1:
+                path_node = root_tree.add(f"[cyan]{path}[/cyan]")
+            else:
+                path_node = root_tree
+
+            # 预览前三个文件夹（如果有的话）
+            show_count = min(3, len(path_operations))
+            for i, op in enumerate(path_operations[:show_count]):
+                folder_node = path_node.add(f"[yellow]{op['folder']}[/yellow] -> [green]{op['rel_destination']}[/green]")
+                folder_node.add(f"[blue]识别时间戳: {op['timestamp'].strftime('%Y-%m-%d')}[/blue]")
+
+            # 如果有更多文件夹，显示省略信息
+            if len(path_operations) > show_count:
+                path_node.add(f"[dim]... 还有 {len(path_operations) - show_count} 个文件夹[/dim]")
+
     # 打印树
     rprint(root_tree)
-    
+
+    # 显示统计信息
+    console.print(f"\n[bold]统计信息:[/bold]")
+    console.print(f"总共处理 [cyan]{len(paths)}[/cyan] 个文件夹路径")
+    console.print(f"总共找到 [cyan]{len(all_operations)}[/cyan] 个待归档项目")
+
     # 确认是否同步文件时间
     sync_time = Confirm.ask("是否同步文件时间？", default=True)
     logger.info(f"用户选择{'同步' if sync_time else '不同步'}文件时间")
-    
+
     # 确认是否执行移动操作
     if Confirm.ask("确认执行以上操作？", default=True):
         logger.info("用户确认执行归档操作")
-        for folder_path, dt, name in folders_with_timestamp:
-            logger.info(f"处理文件夹: {name}, 时间戳: {dt}")
-            console.print(f"[green]处理: {name} -> {dt}")
-            
-            if sync_time:
-                logger.info(f"同步文件时间: {folder_path}")
-                sync_folder_file_time(folder_path, dt)
-                console.print(f"[blue]已同步文件时间: {folder_path}")
-                
-            new_path = archive_folder(folder_path, dt, base_dst, format_key)
-            logger.info(f"已归档到: {new_path}")
-            console.print(f"[cyan]已归档到: {new_path}")
+
+        # 按路径分组执行
+        for path in paths:
+            path_folders = [(folder_path, dt, name) for folder_path, dt, name in all_folders_with_timestamp
+                           if any(op["source_path"] == path and op["folder"] == name for op in all_operations)]
+
+            if not path_folders:
+                continue
+
+            console.print(f"\n[bold]处理路径: {path}[/bold]")
+
+            # 确定归档目录
+            if archive_strategy == "independent":
+                if use_archive_folder:
+                    current_base_dst = os.path.join(path, '归档')
+                else:
+                    current_base_dst = path  # 直接在当前文件夹下创建
+            else:  # unified
+                current_base_dst = unified_base_dst
+
+            for folder_path, dt, name in path_folders:
+                logger.info(f"处理文件夹: {name}, 时间戳: {dt}")
+                console.print(f"[green]处理: {name} -> {dt}")
+
+                if sync_time:
+                    logger.info(f"同步文件时间: {folder_path}")
+                    sync_folder_file_time(folder_path, dt)
+                    console.print(f"[blue]已同步文件时间: {folder_path}")
+
+                new_path = archive_folder(folder_path, dt, current_base_dst, format_key)
+                logger.info(f"已归档到: {new_path}")
+                console.print(f"[cyan]已归档到: {new_path}")
     else:
         logger.warning("用户取消了操作")
         console.print("[yellow]操作已取消")
