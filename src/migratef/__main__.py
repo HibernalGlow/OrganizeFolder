@@ -222,6 +222,42 @@ def migrate_paths_directly(source_paths: list[str], target_root_dir: str, action
 
     counters = {'migrated': 0, 'error': 0, 'skipped': 0}
     
+    # existing_dir_behavior 将在外层通过全局变量注入（由 migrate 调用前设置）
+
+    def merge_directories(src: Path, dst: Path, action: str):
+        """将 src 目录内容合并到 dst (dst 已存在)，文件冲突时覆盖，目录递归合并。
+        action == 'copy' 时复制文件；'move' 时移动并最终删除源目录。
+        """
+        for root, dirs, files in os.walk(src):
+            rel = Path(root).relative_to(src)
+            target_dir = dst / rel
+            target_dir.mkdir(parents=True, exist_ok=True)
+            # 文件处理
+            for f in files:
+                s_file = Path(root) / f
+                t_file = target_dir / f
+                try:
+                    if action == 'move':
+                        if t_file.exists():
+                            # 目标已存在：删除后再移动（确保覆盖）
+                            if t_file.is_file():
+                                t_file.unlink()
+                            else:
+                                shutil.rmtree(t_file)
+                        shutil.move(str(s_file), str(t_file))
+                    else:  # copy
+                        if t_file.exists() and not t_file.is_file():
+                            shutil.rmtree(t_file)
+                        shutil.copy2(s_file, t_file)
+                except Exception as e:
+                    logger.error(f"合并文件 '{s_file}' 到 '{t_file}' 时出错: {e}")
+        if action == 'move':
+            # 清理空的源目录
+            try:
+                shutil.rmtree(src)
+            except Exception as e:
+                logger.warning(f"清理源目录 '{src}' 时出错: {e}")
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -237,7 +273,7 @@ def migrate_paths_directly(source_paths: list[str], target_root_dir: str, action
         
         task_id = progress.add_task("[cyan]正在迁移文件和文件夹...", total=len(source_paths))
         
-        for source_path_str in source_paths:
+    for source_path_str in source_paths:
             source_path = Path(source_path_str).resolve()
             item_name = source_path.name
             
@@ -249,16 +285,37 @@ def migrate_paths_directly(source_paths: list[str], target_root_dir: str, action
                     continue
                 
                 target_path = target_root / item_name
-                
-                # 检查目标是否已存在
+
+                # 检查目标是否已存在 (目录冲突处理)
                 if target_path.exists():
-                    logger.warning(f"跳过: 目标 '{target_path}' 已存在")
-                    counters['skipped'] += 1
-                    progress.update(task_id, advance=1, description=f"[yellow]跳过(已存在):[/yellow] [dim]{item_name}[/dim]")
-                    continue
+                    if source_path.is_dir() and target_path.is_dir():
+                        # 目录合并 (延后由外层调用指定行为)
+                        pass
+                    else:
+                        logger.warning(f"跳过: 目标 '{target_path}' 已存在")
+                        counters['skipped'] += 1
+                        progress.update(task_id, advance=1, description=f"[yellow]跳过(已存在):[/yellow] [dim]{item_name}[/dim]")
+                        continue
                 
+                # 处理目录已存在但需要合并的情况
+                if target_path.exists() and source_path.is_dir() and target_path.is_dir():
+                    # 读取行为：从环境变量或外部闭包变量 existing_dir_behavior
+                    behavior = existing_dir_behavior  # noqa: F821 - 由外层闭包提供
+                    if behavior == 'merge':
+                        merge_directories(source_path, target_path, action)
+                        counters['migrated'] += 1
+                        progress.update(task_id, advance=1, description=f"[cyan]合并目录:[/cyan] [dim]{item_name}[/dim]")
+                    else:  # skip
+                        logger.info(f"跳过目录(已存在): {item_name}")
+                        counters['skipped'] += 1
+                        progress.update(task_id, advance=1, description=f"[yellow]跳过目录:[/yellow] [dim]{item_name}[/dim]")
+                    continue
+
                 if action == 'move':
-                    shutil.move(str(source_path), str(target_path))
+                    if source_path.is_dir():
+                        shutil.move(str(source_path), str(target_path))
+                    else:
+                        shutil.move(str(source_path), str(target_path))
                     counters['migrated'] += 1
                     progress.update(task_id, advance=1, description=f"[blue]移动:[/blue] [dim]{item_name}[/dim]")
                 else:  # copy
@@ -538,6 +595,7 @@ def migrate(
     move: bool = typer.Option(True, "--move", help="移动文件而不是复制"),
     flat: bool = typer.Option(False, "--flat", "-f", help="扁平迁移模式，不保持目录结构（类似mv命令）"),
     direct: bool = typer.Option(False, "--direct", "-d", help="直接迁移模式，整个文件/文件夹作为一个单位迁移"),
+    existing_dir: str = typer.Option("merge", "--existing-dir", help="当 direct 模式下目标存在同名目录时的处理方式: merge(合并覆盖)/skip(跳过)", show_default=True),
 ):
     """迁移文件和文件夹，支持保持目录结构或扁平迁移"""
     # 进入交互式模式的条件：显式指定 --interactive，或既没有提供 positional files、也没有使用 --clipboard
@@ -639,6 +697,8 @@ def migrate(
     # 根据模式执行迁移
     if direct:
         # 直接迁移模式
+        global existing_dir_behavior
+        existing_dir_behavior = existing_dir if existing_dir in {"merge", "skip"} else "merge"
         migrate_paths_directly(source_paths, str(target), action=action)
     else:
         # 文件级迁移模式
