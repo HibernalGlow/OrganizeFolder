@@ -1,0 +1,68 @@
+[project]
+name = "organizef"
+version = "0.1.5"
+description = "一个功能丰富的文件夹整理工具，用于解散嵌套文件夹、清理空文件夹和备份文件等"
+readme = "README.md"
+authors = [
+    {name = "PackU", email = "example@example.com"}
+]
+requires-python = ">=3.11"
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "rich>=10.0.0",
+    "pyperclip>=1.8.0",
+    "keyboard>=0.13.5",
+    "typer>=0.9.0",
+    "loguru>=0.7.3",
+    "click<8.2.0",
+    "python-dateutil>=2.9.0.post0",
+    "psutil>=5.9.0",
+    "pytest>=8.3.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=22.0.0",
+    "isort>=5.10.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/HibernalGlow/OrganizeFolder"
+"Bug Tracker" = "https://github.com/HibernalGlow/OrganizeFolder/issues"
+
+[project.scripts]
+organizef = "organizef.__main__:app"
+ogf = "organizef.__main__:app"  # 添加别名
+cleanf = "cleanf.__main__:app"
+dissolvef = "dissolvef.__main__:app"
+migratef = "migratef.__main__:app"
+mergef = "mergef.__main__:app"
+snf = "snf.__main__:main"  # 添加 snf 别名
+snu = "snu.__main__:main"
+synct = "synct.__main__:main"
+passt = "passt.__main__:app"
+badzf = "badzf.__main__:main"
+[build-system]
+requires = ["setuptools>=42.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["organizef","cleanf","dissolvef","migratef","mergef"]
+package-dir = {"" = "src"}
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+line_length = 100

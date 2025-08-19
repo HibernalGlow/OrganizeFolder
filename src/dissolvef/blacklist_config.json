@@ -1,0 +1,22 @@
+{
+  "single_archive_folder": [
+    "画集",
+    "商业志",
+    "同人志",
+    "#compare"
+  ],
+  "direct_dissolve": [],
+  "media_dissolve": [],
+  "nested_dissolve": [
+    "画集",
+    "商业志",
+    "同人志",
+    "#compare"
+  ],
+  "description": {
+    "single_archive_folder": "解散单压缩包文件夹时需要跳过的路径关键词黑名单",
+    "direct_dissolve": "直接解散文件夹时的黑名单（暂时留空）",
+    "media_dissolve": "媒体文件解散时的黑名单（暂时留空）", 
+    "nested_dissolve": "嵌套解散时的黑名单（暂时留空）"
+  }
+}
