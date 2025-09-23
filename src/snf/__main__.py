@@ -211,7 +211,7 @@ def get_paths_interactively():
     table.add_column("说明", style="white")
     table.add_row("1", "手动输入路径")
     table.add_row("2", "从剪贴板读取路径")
-    table.add_row("3", "使用默认路径 (E:\\1EHV)")
+    table.add_row("3", "使用默认路径 (E:\\1Hub\\EH\\1EHV)")
     
     console.print("\n")
     console.print(table)
@@ -269,7 +269,7 @@ def get_paths_interactively():
                     
             elif choice == "3":
                 # 使用默认路径
-                default_path = r"E:\1EHV"
+                default_path = r"E:\1Hub\EH\1EHV"
                 if os.path.exists(default_path):
                     paths.append(default_path)
                     console.print(f"[green]✓ 使用默认路径:[/green] {default_path}")

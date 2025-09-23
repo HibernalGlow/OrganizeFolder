@@ -559,7 +559,7 @@ def migrate_files_with_structure(source_file_paths: list[str], target_root_dir: 
 def get_target_dir_interactively():
     target_dir = ""
     while not target_dir:
-        target_dir = Prompt.ask("[bold cyan]请输入目标根目录路径[/bold cyan]",default="E:\\2EHV").strip()
+        target_dir = Prompt.ask("[bold cyan]请输入目标根目录路径[/bold cyan]",default="E:\\1Hub\\EH\\2EHV").strip()
         if not target_dir:
             logger.warning("目标目录不能为空，请重新输入")
             # console.print("[yellow]目标目录不能为空，请重新输入。[/yellow]")

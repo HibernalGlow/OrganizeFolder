@@ -229,7 +229,7 @@ class FileTreePreview:
             self.console.print(Panel.fit(stats_text, border_style="blue"))
             
             # 确认删除
-            return Confirm.ask("[bold red]确认删除以上文件吗?[/bold red]", default=False)
+            return Confirm.ask("[bold red]确认删除以上文件吗?[/bold red]", default=True)
         
         else:
             # 使用文本显示

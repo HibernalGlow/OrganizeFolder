@@ -13,7 +13,7 @@ HISTORY_FILE = os.path.join(SCRIPT_DIR, 'archive_check_history.json')
 # 默认路径列表
 DEFAULT_PATHS = [
     Path(r"D:\3EHV"),
-    Path(r"E:\7EHV"),
+    Path(r"E:\1Hub\EH\7EHV"),
     # 可以在这里添加更多默认路径
 ]
 

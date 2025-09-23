@@ -59,7 +59,7 @@ class InteractiveUI:
 
         return self.path_collector.get_paths()
     
-    def get_target_dir_interactively(self, default_path: str = "E:\\2EHV") -> str:
+    def get_target_dir_interactively(self, default_path: str = "E:\\1Hub\\EH\\2EHV") -> str:
         """交互式获取目标目录"""
         target_dir = ""
         while not target_dir:
