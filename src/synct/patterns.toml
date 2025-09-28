@@ -1,0 +1,49 @@
+[settings]
+min_year = 1900
+max_year = 2100
+default_month = 1
+default_day = 1
+week_start = "monday"
+
+[[patterns]]
+name = "year_month_day"
+regex = "(?P<year>20\\d{2}|19\\d{2})[-_.]?(?P<month>0[1-9]|1[0-2])[-_.]?(?P<day>0[1-9]|[12]\\d|3[01])"
+resolution = "day"
+
+[[patterns]]
+name = "year_month_day_compact"
+regex = "(?P<year>20\\d{2}|19\\d{2})(?P<month>0[1-9]|1[0-2])(?P<day>0[1-9]|[12]\\d|3[01])"
+resolution = "day"
+
+[[patterns]]
+name = "year_month_day_chinese"
+regex = "(?P<year>20\\d{2}|19\\d{2})年(?P<month>0?[1-9]|1[0-2])月(?P<day>0?[1-9]|[12]\\d|3[01])日"
+resolution = "day"
+
+[[patterns]]
+name = "iso_week"
+regex = "(?P<year>20\\d{2}|19\\d{2})[-_.]?(?P<week>0[1-9]|[1-4]\\d|5[0-3])"
+resolution = "iso-week"
+weekday = "monday"
+
+[[patterns]]
+name = "year_month"
+regex = "(?P<year>20\\d{2}|19\\d{2})[-_.]?(?P<month>0[1-9]|1[0-2])"
+resolution = "month"
+
+[[patterns]]
+name = "two_digit_year_month_day"
+regex = "(?P<year>\\d{2})[-_.]?(?P<month>0[1-9]|1[0-2])[-_.]?(?P<day>0[1-9]|[12]\\d|3[01])"
+resolution = "day"
+year_base = 2000
+
+[[patterns]]
+name = "two_digit_year_month"
+regex = "(?P<year>\\d{2})[-_.]?(?P<month>0[1-9]|1[0-2])"
+resolution = "month"
+year_base = 2000
+
+[[patterns]]
+name = "year_only"
+regex = "(?P<year>20\\d{2}|19\\d{2})"
+resolution = "year"
