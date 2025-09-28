@@ -21,6 +21,8 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
+from .input_path import get_paths
+
 def setup_logger(app_name="app", project_root=None, console_output=True):
     """配置 Loguru 日志系统
     
@@ -89,113 +91,7 @@ console = Console()
 
 def get_source_paths_interactively() -> list[str]:
     """交互式地获取源文件和文件夹路径列表。"""
-    source_paths = []
-    prompt_message = "[bold cyan]请输入要迁移的源文件或文件夹路径（每个路径一行，输入 'c' 从剪贴板读取，输入 'done' 或直接按 Enter 结束）：[/bold cyan]"
-    logger.info(prompt_message)
-    while True:
-        try:
-            # 使用 Prompt.ask 获取输入，允许为空或 'done' 结束
-            file_path_raw = Prompt.ask("  [dim]源路径（文件或文件夹）[/dim]", default="done", show_default=False).strip()
-
-            # --- 新增：处理剪贴板输入 ---
-            if file_path_raw.lower() == 'c':
-
-                try:
-                    clipboard_content = pyperclip.paste()
-                    if not clipboard_content:
-                        logger.warning("剪贴板为空")
-                        # console.print("[yellow]剪贴板为空。[/yellow]")
-                        continue
-
-                    paths_from_clipboard = [p.strip() for p in clipboard_content.splitlines() if p.strip()]
-                    if not paths_from_clipboard:
-                        logger.warning("剪贴板内容解析后没有有效的路径")
-                        # console.print("[yellow]剪贴板内容解析后没有有效的路径。[/yellow]")
-                        continue
-
-                    added_count = 0
-                    skipped_count = 0
-                    error_count = 0
-                    logger.info(f"正在处理剪贴板中的 {len(paths_from_clipboard)} 个路径...")
-                    # console.print(f"  [cyan]正在处理剪贴板中的 {len(paths_from_clipboard)} 个路径...[/cyan]")
-                    for cb_path_raw in paths_from_clipboard:
-                        cb_path = cb_path_raw.strip('\"\'') # 移除引号
-                        p = Path(cb_path)
-                        if p.exists() and (p.is_file() or p.is_dir()):
-                            if cb_path not in source_paths: # 避免重复添加
-                                source_paths.append(cb_path)
-                                logger.info(f"已添加: {cb_path}")
-                                # console.print(f"    [green]已添加:[/green] {cb_path}")
-                                added_count += 1
-                            else:
-                                logger.debug(f"已存在: {cb_path}")
-                                # console.print(f"    [dim]已存在:[/dim] {cb_path}")
-                                skipped_count +=1
-                        elif p.exists() and not (p.is_file() or p.is_dir()):
-                            logger.warning(f"警告: '{p.name}' 不是文件或文件夹，已跳过")
-                            # console.print(f"    [yellow]警告:[/yellow] '{p.name}' 不是文件或文件夹，已跳过。")
-                            skipped_count += 1
-                        else:
-                            logger.error(f"错误: 路径 '{cb_path_raw}' (或处理后的 '{cb_path}') 不存在或路径无效，已跳过")
-                            # console.print(f"    [red]错误:[/red] 路径 '{cb_path_raw}' (或处理后的 '{cb_path}') 不存在或路径无效，已跳过。")
-                            error_count += 1
-                    logger.info(f"剪贴板处理完成：添加 {added_count}, 跳过 {skipped_count}, 错误 {error_count}")
-                    # console.print(f"  [cyan]剪贴板处理完成：添加 {added_count}, 跳过 {skipped_count}, 错误 {error_count}[/cyan]")
-
-                except Exception as e:
-                    logger.error(f"从剪贴板读取或处理时发生错误: {e}")
-                    # console.print(f"[red]从剪贴板读取或处理时发生错误: {e}[/red]")
-                continue # 处理完剪贴板后，继续等待下一个输入
-            # --- 新增结束 ---
-
-
-            if not file_path_raw or file_path_raw.lower() == 'done':
-                if not source_paths:
-                    logger.warning("警告：未输入任何源路径")
-                    # console.print("[yellow]警告：未输入任何源路径。[/yellow]")
-                    # 使用 Confirm.ask 确认是否继续
-                    if not Confirm.ask("确定要继续吗（不迁移任何文件）？", default=False):
-                        logger.error("操作已取消")
-                        # console.print("[bold red]操作已取消。[/bold red]")
-                        exit() # 或者返回空列表让主函数处理
-                    else:
-                        break # 确认继续，即使列表为空
-                else:
-                    break # 完成输入
-
-            # --- 添加这行代码 ---
-            # 移除首尾可能存在的双引号或单引号
-            file_path = file_path_raw.strip('\"\'')
-            # --- 修改结束 ---
-
-
-            # 简单的路径有效性检查 (使用处理后的 file_path)
-            p = Path(file_path)
-            if p.exists() and (p.is_file() or p.is_dir()):
-                 if file_path not in source_paths: # 避免重复添加
-                     source_paths.append(file_path) # 添加处理后的路径
-                     logger.info(f"已添加: {file_path}")
-                     # console.print(f"  [green]已添加:[/green] {file_path}")
-                 else:
-                     logger.debug(f"已存在: {file_path}")
-                     # console.print(f"  [dim]已存在:[/dim] {file_path}")
-            elif p.exists() and not (p.is_file() or p.is_dir()):
-                 logger.warning(f"警告: '{p.name}' 不是文件或文件夹，已跳过")
-                 # console.print(f"  [yellow]警告:[/yellow] '{p.name}' 不是文件或文件夹，已跳过。")
-            else:
-                 # 打印原始带引号的路径，如果去引号后仍找不到，方便调试
-                 logger.error(f"错误: 路径 '{file_path_raw}' (或处理后的 '{file_path}') 不存在或路径无效，已跳过")
-                 # console.print(f"  [red]错误:[/red] 路径 '{file_path_raw}' (或处理后的 '{file_path}') 不存在或路径无效，已跳过。")
-
-        except KeyboardInterrupt:
-            logger.error("操作已中断")
-            # console.print("\n[bold red]操作已中断。[/bold red]")
-            exit()
-        except Exception as e:
-            logger.error(f"输入时发生错误: {e}")
-            # console.print(f"[red]输入时发生错误: {e}[/red]")
-
-    return source_paths
+    return get_paths() or []
 
 
 def migrate_paths_directly(source_paths: list[str], target_root_dir: str, action: str = 'copy'):
