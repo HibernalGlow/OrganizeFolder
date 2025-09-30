@@ -2,21 +2,19 @@
 
 # Define profiles that combine rules
 [profiles.clean_empty]
-description = "Clean empty directories"
+description = "清理空目录"
 rules = [
     { id = "clean_empty_dirs", enabled = true, params = { exclude_dirs = ["important", "backup"] } }
 ]
 
 [profiles.dissolve_media]
-description = "Dissolve single media folders"
+description = "解散单媒体文件夹"
 rules = [
     { id = "dissolve_single_media", enabled = true, params = { extensions = [".jpg", ".png", ".mp4"] } }
 ]
 
-[profiles.full_cleanup]
-description = "Full cleanup combining clean and dissolve"
+[profiles.move_videos]
+description = "移动视频文件到 [video] 文件夹"
 rules = [
-    { id = "clean_empty_dirs", enabled = true, params = { exclude_dirs = ["important"] } },
-    { id = "dissolve_single_media", enabled = true, params = { extensions = [".jpg", ".png"] } },
-    { id = "merge_duplicates", enabled = false, params = {} }
+    { id = "move_videos", enabled = true, params = { video_extensions = ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "nov"] } }
 ]

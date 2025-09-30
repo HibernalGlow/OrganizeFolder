@@ -1,14 +1,17 @@
 rules:
 - actions:
-  - echo: 'Found empty directory: {path}'
-  - delete
+  - move: '{location}/[video]/{path.relative_to(location)}'
   filters:
-  - empty
+  - extension:
+    - mp4
+    - avi
+    - mkv
+    - mov
+    - wmv
+    - flv
+    - webm
+    - nov
   locations:
-  - exclude_dirs:
-    - important
-    - backup
-    path: D:\Downloads\test
-  name: Remove empty directories
+  - path: D:\Downloads\test
+  name: Move Videos to [video] Folder
   subfolders: true
-  targets: dirs
