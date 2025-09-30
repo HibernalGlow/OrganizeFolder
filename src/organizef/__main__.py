@@ -3,6 +3,7 @@ from pathlib import Path
 import pyperclip
 import subprocess
 import yaml
+from typing import List
 from rich.prompt import Prompt
 from rich.console import Console
 from .generator import OrganizefGenerator
@@ -13,7 +14,7 @@ app = typer.Typer()
 @app.command()
 def run(
     profile: str = typer.Option(None, help="Profile name from config.toml"),
-    path: str = typer.Option(None, help="Path to organize (default: clipboard)"),
+    paths: List[str] = typer.Option(None, "--path", "-p", help="Path(s) to organize (repeatable option)"),
     interactive: bool = typer.Option(False, help="Use interactive mode to select multiple paths"),
     simulate: bool = typer.Option(False, help="Run in simulation mode"),
     dry_run: bool = typer.Option(False, help="Only generate and print YAML, do not run organize"),
@@ -37,15 +38,24 @@ def run(
         profile = profiles[int(choice) - 1]
 
     # Get paths
-    if interactive or (path is None and not interactive):
-        paths = get_paths()
-        if not paths:
-            typer.echo("No paths selected")
-            raise typer.Exit(1)
+    if interactive:
+        selected_paths = get_paths()
+    elif paths:
+        selected_paths = []
+        for provided_path in paths:
+            normalized = Path(provided_path.strip('"')).expanduser()
+            if not normalized.exists():
+                console.print(f"[red]路径无效: {normalized}[/red]")
+                raise typer.Exit(1)
+            selected_paths.append(str(normalized))
     else:
-        paths = [path]
+        selected_paths = get_paths()
 
-    yaml_content = generator.generate_yaml(profile, paths)
+    if not selected_paths:
+        typer.echo("No paths selected")
+        raise typer.Exit(1)
+
+    yaml_content = generator.generate_yaml(profile, selected_paths)
 
     if dry_run:
         typer.echo(yaml_content)

@@ -6,82 +6,40 @@ rules:
       - extension: ${image_extensions}
       - python: |
           from PIL import Image
-          import os
-          from pathlib import Path
-          
-          # 尝试导入可选的插件，但不让导入错误影响主流程
-          try:
-              import pillow_avif
-              import pillow_jxl
-          except (ImportError, OSError) as e:
-              # 忽略插件导入错误，这些插件不是必需的
-              pass
-          def check_dimension_ranges(value, ranges, is_min_check=False):
-              """检查尺寸是否在指定范围内"""
-              if not ranges:  # 空列表 = 不检查该维度
+          import pillow_avif
+          import pillow_jxl
+
+          def check_ranges(value, ranges):
+              """快速检查尺寸是否在范围内"""
+              if not ranges:
                   return False
-              for range_spec in ranges:
-                  if isinstance(range_spec, list) and len(range_spec) == 2:
-                      min_val, max_val = range_spec
-                      if is_min_check:
-                          # 对于min检查：value >= min_val
-                          if value >= min_val:
-                              return True
-                      else:
-                          # 对于max检查：value <= max_val
-                          if value <= max_val:
-                              return True
-                  elif isinstance(range_spec, (int, float)):
-                      # 精确值匹配
-                      if is_min_check:
-                          # 对于min检查：value >= range_spec
-                          if value >= range_spec:
-                              return True
-                      else:
-                          # 对于max检查：value <= range_spec
-                          if value <= range_spec:
-                              return True
+              for r in ranges:
+                  if isinstance(r, (int, float)) and value <= r:
+                      return True
+              return False
+
+          # 检查是否在目标文件夹中
+          if '[organize_images]' in str(path):
               return False
 
           try:
-              # 检查路径是否包含 [organize_images]，如果是则跳过
-              if '[organize_images]' in str(path):
-                  return False
-              
-              # 处理长路径问题 - 在 Windows 上使用 UNC 路径如果需要
-              image_path = str(path)
-              if os.name == 'nt' and not image_path.startswith('\\\\?\\'):
-                  # 在 Windows 上，如果路径可能很长，添加 UNC 前缀
-                  if len(image_path) > 200:  # 预留一些缓冲
-                      image_path = '\\\\?\\' + os.path.abspath(image_path)
-              
-              # 使用 Pillow 打开图片，添加超时和错误处理
-              with Image.open(image_path) as img:
+              with Image.open(path) as img:
                   width, height = img.size
 
-                  # 获取过滤参数
-                  max_width_ranges = ${max_width}
-                  max_height_ranges = ${max_height}
+                  # 获取参数并检查
+                  max_w = ${max_width}
+                  max_h = ${max_height}
 
-
-                  # 如果都为空列表，则不移动（相当于不启用过滤）
-                  if not max_width_ranges and not max_height_ranges:
+                  if not max_w and not max_h:
                       return False
 
-                  # 检查是否匹配条件
-                  width_match = check_dimension_ranges(width, max_width_ranges, is_min_check=False) if max_width_ranges else True
-                  height_match = check_dimension_ranges(height, max_height_ranges, is_min_check=False) if max_height_ranges else True
+                  # 快速检查条件
+                  w_ok = check_ranges(width, max_w) if max_w else True
+                  h_ok = check_ranges(height, max_h) if max_h else True
 
-                  # 如果宽度和高度都匹配，则移动到organize_images文件夹
-                  if width_match and height_match:
-                      return True
-                  
-                  return False
+                  return w_ok and h_ok
 
-          except Exception as e:
-              # 记录错误但不中断处理
-              error_msg = f"处理图片时出错 {path}: {str(e)}"
-              print(error_msg)
+          except:
               return False
     actions:
       - move: "{location}/[organize_images]/{path.relative_to(location)}"
