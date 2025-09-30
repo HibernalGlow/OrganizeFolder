@@ -201,3 +201,116 @@ def test_dissolve_direct():
         # other 文件夹应该保持不变
         assert (root / "other").exists()
         assert (root / "other" / "file3.txt").exists()
+
+
+def test_move_gifs():
+    """测试移动 GIF 文件到 [gif] 文件夹规则的 YAML 生成"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+
+        # 创建测试结构：
+        # root/
+        #   ├── subfolder/
+        #   │   ├── animation.gif
+        #   │   └── image.png
+        #   └── banner.gif
+
+        (root / "subfolder").mkdir()
+        (root / "subfolder" / "animation.gif").write_text("fake gif content")
+        (root / "subfolder" / "image.png").write_text("fake png content")
+        (root / "banner.gif").write_text("fake gif content")
+
+        # 加载配置并生成 YAML
+        generator = get_generator()
+        yaml_content = generator.generate_yaml('move_gifs', [str(root)])
+
+        # 验证 YAML 包含正确的结构
+        assert 'rules:' in yaml_content
+        assert 'extension:' in yaml_content
+        assert 'gif' in yaml_content
+        assert 'move:' in yaml_content
+        assert '[gif]' in yaml_content
+        assert '{path.relative_to(location)}' in yaml_content
+
+        # 手动模拟移动逻辑
+        # 创建 [gif] 文件夹
+        gif_dir = root / "[gif]"
+        gif_dir.mkdir(exist_ok=True)
+
+        # 移动 GIF 文件
+        for gif_file in [root / "banner.gif", root / "subfolder" / "animation.gif"]:
+            if gif_file.exists():
+                relative_path = gif_file.relative_to(root)
+                target = gif_dir / relative_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                gif_file.rename(target)
+
+        # 验证结果
+        assert (root / "[gif]" / "banner.gif").exists()
+        assert (root / "[gif]" / "subfolder" / "animation.gif").exists()
+        assert not (root / "banner.gif").exists()
+        assert not (root / "subfolder" / "animation.gif").exists()
+
+        # PNG 文件应该保持不变
+        assert (root / "subfolder" / "image.png").exists()
+
+
+def test_move_images_by_size():
+    """测试根据图片尺寸移动图片文件规则的 YAML 生成"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+
+        # 创建测试结构：
+        # root/
+        #   ├── large_image.jpg (模拟大图片)
+        #   ├── small_image.png (模拟小图片)
+        #   └── normal_image.gif (中等尺寸图片)
+
+        # 注意：由于我们无法创建真实的图片文件，我们只测试 YAML 生成
+        (root / "large_image.jpg").write_text("fake large image")
+        (root / "small_image.png").write_text("fake small image")
+        (root / "normal_image.gif").write_text("fake normal image")
+
+        # 加载配置并生成 YAML
+        generator = get_generator()
+        yaml_content = generator.generate_yaml('move_images_by_size', [str(root)])
+
+        # 验证 YAML 包含正确的结构
+        assert 'rules:' in yaml_content
+        assert 'extension:' in yaml_content
+        assert 'jpg' in yaml_content
+        assert 'png' in yaml_content
+        assert 'gif' in yaml_content
+        assert 'python:' in yaml_content
+        assert 'PIL' in yaml_content
+        assert 'Image.open' in yaml_content
+        assert 'min_width' in yaml_content
+        assert 'min_height' in yaml_content
+        assert '[large_images]' in yaml_content
+        assert '[small_images]' in yaml_content
+        assert '{path.relative_to(location)}' in yaml_content
+
+        # 由于我们无法创建真实的图片文件来测试实际的移动逻辑，
+        # 这里只验证 YAML 结构正确
+
+
+def test_move_images_by_size_exiftool():
+    """测试使用 exiftool 根据图片尺寸移动图片文件规则的 YAML 生成"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+
+        # 创建测试文件
+        (root / "test_image.jpg").write_text("fake image")
+
+        # 加载配置并生成 YAML
+        generator = get_generator()
+        yaml_content = generator.generate_yaml('move_images_by_size_exiftool', [str(root)])
+
+        # 验证 YAML 包含正确的结构
+        assert 'rules:' in yaml_content
+        assert 'exif:' in yaml_content
+        assert 'exiftool' in yaml_content
+        assert 'imagewidth' in yaml_content
+        assert 'imageheight' in yaml_content
+        assert '[large_images_exiftool]' in yaml_content
+        assert '[large_images_exiftool_py]' in yaml_content

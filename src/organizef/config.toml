@@ -40,4 +40,15 @@ description = "移动视频文件到 [video] 文件夹"
 rules = [
     { id = "move_videos", enabled = true, params = { video_extensions = ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "nov"] } }
 ]
+[profiles.move_gifs]
+description = "移动 GIF 文件到 [gif] 文件夹"
+rules = [
+    { id = "move_gifs", enabled = true, params = { gif_extensions = ["gif"] } }
+]
+[profiles.move_images_by_size]
+description = "根据图片尺寸移动图片文件"
+rules = [
+    { id = "move_images_by_size", enabled = true, params = { image_extensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp", "avif", "jxl"], max_width = [], max_height = [630], exclude_dirs = ["[organize_images]"] } }
+]
+
 

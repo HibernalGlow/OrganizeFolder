@@ -1,40 +1,51 @@
 rules:
 - actions:
-  - delete
+  - move: '{location}/[organize_images]/{path.relative_to(location)}'
   filters:
-  - empty
+  - extension:
+    - jpg
+    - jpeg
+    - png
+    - gif
+    - bmp
+    - tiff
+    - webp
+    - avif
+    - jxl
+  - python: "from PIL import Image\nimport os\nfrom pathlib import Path\n\n# 尝试导入可选的插件，但不让导入错误影响主流程\n\
+      try:\n    import pillow_avif\n    import pillow_jxl\nexcept (ImportError, OSError)\
+      \ as e:\n    # 忽略插件导入错误，这些插件不是必需的\n    pass\ndef check_dimension_ranges(value,\
+      \ ranges, is_min_check=False):\n    \"\"\"检查尺寸是否在指定范围内\"\"\"\n    if not ranges:\
+      \  # 空列表 = 不检查该维度\n        return False\n    for range_spec in ranges:\n   \
+      \     if isinstance(range_spec, list) and len(range_spec) == 2:\n          \
+      \  min_val, max_val = range_spec\n            if is_min_check:\n           \
+      \     # 对于min检查：value >= min_val\n                if value >= min_val:\n   \
+      \                 return True\n            else:\n                # 对于max检查：value\
+      \ <= max_val\n                if value <= max_val:\n                    return\
+      \ True\n        elif isinstance(range_spec, (int, float)):\n            # 精确值匹配\n\
+      \            if is_min_check:\n                # 对于min检查：value >= range_spec\n\
+      \                if value >= range_spec:\n                    return True\n\
+      \            else:\n                # 对于max检查：value <= range_spec\n        \
+      \        if value <= range_spec:\n                    return True\n    return\
+      \ False\n\ntry:\n    # 检查路径是否包含 [organize_images]，如果是则跳过\n    if '[organize_images]'\
+      \ in str(path):\n        return False\n    \n    # 处理长路径问题 - 在 Windows 上使用 UNC\
+      \ 路径如果需要\n    image_path = str(path)\n    if os.name == 'nt' and not image_path.startswith('\\\
+      \\\\\\?\\\\'):\n        # 在 Windows 上，如果路径可能很长，添加 UNC 前缀\n        if len(image_path)\
+      \ > 200:  # 预留一些缓冲\n            image_path = '\\\\\\\\?\\\\' + os.path.abspath(image_path)\n\
+      \    \n    # 使用 Pillow 打开图片，添加超时和错误处理\n    with Image.open(image_path) as img:\n\
+      \        width, height = img.size\n\n        # 获取过滤参数\n        max_width_ranges\
+      \ = []\n        max_height_ranges = [630]\n\n\n        # 如果都为空列表，则不移动（相当于不启用过滤）\n\
+      \        if not max_width_ranges and not max_height_ranges:\n            return\
+      \ False\n\n        # 检查是否匹配条件\n        width_match = check_dimension_ranges(width,\
+      \ max_width_ranges, is_min_check=False) if max_width_ranges else True\n    \
+      \    height_match = check_dimension_ranges(height, max_height_ranges, is_min_check=False)\
+      \ if max_height_ranges else True\n\n        # 如果宽度和高度都匹配，则移动到organize_images文件夹\n\
+      \        if width_match and height_match:\n            return True\n       \
+      \ \n        return False\n\nexcept Exception as e:\n    # 记录错误但不中断处理\n    error_msg\
+      \ = f\"处理图片时出错 {path}: {str(e)}\"\n    print(error_msg)\n    return False\n"
   locations:
   - exclude_dirs:
-    - important
-    - backup
-    path: D:\Downloads\test\another\新建文件夹
-  name: 清理空目录
-  subfolders: true
-  targets: dirs
-- actions:
-  - delete
-  filters:
-  - extension: bak
-  locations:
-  - path: D:\Downloads\test\another\新建文件夹
-  name: 删除备份文件
-  subfolders: true
-- actions:
-  - delete
-  filters:
-  - name:
-      startswith: temp_
-  locations:
-  - path: D:\Downloads\test\another\新建文件夹
-  name: 删除临时文件夹
-  subfolders: true
-  targets: dirs
-- actions:
-  - delete
-  filters:
-  - name:
-      contains: .trash
-  locations:
-  - path: D:\Downloads\test\another\新建文件夹
-  name: 删除垃圾文件和文件夹
+    - '[organize_images]'
+    path: test_images
+  name: 移动符合条件的图片到 [organize_images] 文件夹
   subfolders: true

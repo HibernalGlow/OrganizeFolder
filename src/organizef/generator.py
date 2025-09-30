@@ -53,12 +53,27 @@ class OrganizefGenerator:
     def replace_placeholders(self, data: Any, params: Dict[str, Any]):
         if isinstance(data, dict):
             for key, value in data.items():
-                if isinstance(value, str) and value.startswith('${') and value.endswith('}'):
-                    param_key = value[2:-1]
-                    if param_key in params:
-                        data[key] = params[param_key]
+                if isinstance(value, str):
+                    # Handle ${variable} replacement
+                    if value.startswith('${') and value.endswith('}'):
+                        param_key = value[2:-1]
+                        if param_key in params:
+                            data[key] = params[param_key]
+                        else:
+                            raise ValueError(f"Parameter {param_key} not found")
                     else:
-                        raise ValueError(f"Parameter {param_key} not found")
+                        # Handle variable replacement within strings (like in python filters)
+                        original_value = value
+                        for param_key, param_value in params.items():
+                            placeholder = f"${{{param_key}}}"
+                            if placeholder in original_value:
+                                if isinstance(param_value, list):
+                                    # Convert list to YAML format
+                                    original_value = original_value.replace(placeholder, str(param_value))
+                                else:
+                                    original_value = original_value.replace(placeholder, str(param_value))
+                        if original_value != value:
+                            data[key] = original_value
                 else:
                     self.replace_placeholders(value, params)
         elif isinstance(data, list):

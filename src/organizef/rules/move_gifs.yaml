@@ -1,0 +1,8 @@
+rules:
+  - name: "移动 GIF 文件到 [gif] 文件夹"
+    locations: ${locations}
+    subfolders: true
+    filters:
+      - extension: ${gif_extensions}
+    actions:
+      - move: "{location}/[gif]/{path.relative_to(location)}"
