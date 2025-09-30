@@ -1,0 +1,13 @@
+rules:
+- actions:
+  - delete
+  filters:
+  - empty
+  locations:
+  - exclude_dirs:
+    - important
+    - backup
+    path: D:\Downloads\test
+  name: 清理空目录
+  subfolders: true
+  targets: dirs

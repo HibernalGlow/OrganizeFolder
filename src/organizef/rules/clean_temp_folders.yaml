@@ -1,9 +1,10 @@
 rules:
-  - name: "清理空目录"
+  - name: "删除临时文件夹"
     locations: ${locations}
     subfolders: true
     targets: dirs
     filters:
-      - empty
+      - name:
+          startswith: temp_
     actions:
       - delete

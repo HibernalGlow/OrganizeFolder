@@ -1,8 +1,8 @@
 rules:
-  - name: "移动视频文件到 [video] 文件夹"
+  - name: "dissolve_single_video"
     locations: ${locations}
     subfolders: true
     filters:
       - extension: ${video_extensions}
     actions:
-      - move: "{location}/[video]/{path.relative_to(location)}"
+      - move: "{path.parent.parent}/{path.name}"

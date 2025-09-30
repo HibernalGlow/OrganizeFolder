@@ -1,9 +1,9 @@
 rules:
-  - name: "清理空目录"
+  - name: "删除垃圾文件和文件夹"
     locations: ${locations}
     subfolders: true
-    targets: dirs
     filters:
-      - empty
+      - name:
+          contains: .trash
     actions:
       - delete

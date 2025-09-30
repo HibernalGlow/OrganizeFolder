@@ -1,9 +1,8 @@
 rules:
-  - name: "清理空目录"
+  - name: "删除备份文件"
     locations: ${locations}
     subfolders: true
-    targets: dirs
     filters:
-      - empty
+      - extension: bak
     actions:
       - delete

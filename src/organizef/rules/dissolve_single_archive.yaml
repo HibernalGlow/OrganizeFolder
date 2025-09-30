@@ -1,0 +1,8 @@
+rules:
+  - name: "dissolve_single_archive"
+    locations: ${locations}
+    subfolders: true
+    filters:
+      - extension: ${archive_extensions}
+    actions:
+      - move: "{path.parent.parent}/{path.name}"

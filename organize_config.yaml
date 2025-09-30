@@ -1,17 +1,40 @@
 rules:
 - actions:
-  - move: '{location}/[video]/{path.relative_to(location)}'
+  - delete
   filters:
-  - extension:
-    - mp4
-    - avi
-    - mkv
-    - mov
-    - wmv
-    - flv
-    - webm
-    - nov
+  - empty
   locations:
-  - path: D:\Downloads\test
-  name: Move Videos to [video] Folder
+  - exclude_dirs:
+    - important
+    - backup
+    path: D:\Downloads\test\another\新建文件夹
+  name: 清理空目录
+  subfolders: true
+  targets: dirs
+- actions:
+  - delete
+  filters:
+  - extension: bak
+  locations:
+  - path: D:\Downloads\test\another\新建文件夹
+  name: 删除备份文件
+  subfolders: true
+- actions:
+  - delete
+  filters:
+  - name:
+      startswith: temp_
+  locations:
+  - path: D:\Downloads\test\another\新建文件夹
+  name: 删除临时文件夹
+  subfolders: true
+  targets: dirs
+- actions:
+  - delete
+  filters:
+  - name:
+      contains: .trash
+  locations:
+  - path: D:\Downloads\test\another\新建文件夹
+  name: 删除垃圾文件和文件夹
   subfolders: true

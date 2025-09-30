@@ -1,0 +1,8 @@
+rules:
+  - name: "直接解散指定文件夹"
+    locations: ${locations}
+    subfolders: true
+    filters:
+      - name: ${dissolve_folder_names}
+    actions:
+      - move: "{path.parent}/"
