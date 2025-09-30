@@ -6,6 +6,7 @@ import yaml
 from typing import List
 from rich.prompt import Prompt
 from rich.console import Console
+from rich.table import Table
 from .generator import OrganizefGenerator
 from .input import get_paths, get_path
 
@@ -30,10 +31,22 @@ def run(
         if not profiles:
             typer.echo("No profiles found in config.toml")
             raise typer.Exit(1)
-        console.print("[bold blue]Available profiles:[/bold blue]")
+        
+        tag_colors = {"Clean": "green", "Dissolve": "blue", "Move": "yellow"}
+        
+        table = Table(title="Available Profiles")
+        table.add_column("No.", style="cyan", no_wrap=True)
+        table.add_column("Profile", style="magenta")
+        table.add_column("Tags", style="white", width=20)
+        table.add_column("Description", style="white")
+        
         for i, p in enumerate(profiles, 1):
             desc = generator.config['profiles'][p].get('description', '')
-            console.print(f"{i}. {p} - {desc}")
+            tags = generator.config['profiles'][p].get('tags', [])
+            tags_str = ", ".join(f"[{tag_colors.get(tag, 'white')}]{tag}[/{tag_colors.get(tag, 'white')}]" for tag in tags)
+            table.add_row(str(i), p, tags_str, desc)
+        
+        console.print(table)
         choice = Prompt.ask("Select profile", choices=[str(i) for i in range(1, len(profiles)+1)])
         profile = profiles[int(choice) - 1]
 

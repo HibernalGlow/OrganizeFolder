@@ -3,6 +3,7 @@
 # Define profiles that combine rules
 [profiles.clean_empty]
 description = "清理空目录"
+tags = ["Clean"]
 rules = [
     { id = "clean_empty_dirs", enabled = true, params = { exclude_dirs = ["important", "backup"] } }
 ]
@@ -10,6 +11,7 @@ rules = [
 
 [profiles.clean_comprehensive]
 description = "综合清理（空目录+备份文件+临时文件夹+垃圾文件）"
+tags = ["Clean"]
 rules = [
     { id = "clean_empty_dirs", enabled = true, params = { exclude_dirs = ["important", "backup"] } },
     { id = "clean_backup_files", enabled = true, params = {} },
@@ -19,34 +21,40 @@ rules = [
 
 [profiles.dissolve_single_video]
 description = "解散单视频文件夹"
+tags = ["Dissolve"]
 rules = [
     { id = "dissolve_single_video", enabled = true, params = { video_extensions = ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "nov"] } }
 ]
 
 [profiles.dissolve_single_archive]
 description = "解散单压缩包文件夹"
+tags = ["Dissolve"]
 rules = [
     { id = "dissolve_single_archive", enabled = true, params = { archive_extensions = ["zip", "rar", "7z", "cbz", "cbr"] } }
 ]
 
 [profiles.dissolve_direct]
 description = "直接解散指定文件夹"
+tags = ["Dissolve"]
 rules = [
     { id = "dissolve_direct", enabled = true, params = { dissolve_folder_names = ["target_folder"] } }
 ]
 
 [profiles.move_videos]
 description = "移动视频文件到 [video] 文件夹"
+tags = ["Move"]
 rules = [
     { id = "move_videos", enabled = true, params = { video_extensions = ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "nov"] } }
 ]
 [profiles.move_gifs]
 description = "移动 GIF 文件到 [gif] 文件夹"
+tags = ["Move"]
 rules = [
     { id = "move_gifs", enabled = true, params = { gif_extensions = ["gif"] } }
 ]
 [profiles.move_images_by_size]
 description = "根据图片尺寸移动图片文件"
+tags = ["Move", "Clean"]
 rules = [
     { id = "move_images_by_size", enabled = true, params = { image_extensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp", "avif", "jxl"], max_width = [], max_height = [630], exclude_dirs = ["[organize_images]"] } },
     { id = "clean_empty_dirs", enabled = true, params = { exclude_dirs = ["important", "backup"] } }
