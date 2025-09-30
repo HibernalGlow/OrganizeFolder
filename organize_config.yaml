@@ -1,0 +1,14 @@
+rules:
+- actions:
+  - echo: 'Found empty directory: {path}'
+  - delete
+  filters:
+  - empty
+  locations:
+  - exclude_dirs:
+    - important
+    - backup
+    path: D:\Downloads\test
+  name: Remove empty directories
+  subfolders: true
+  targets: dirs

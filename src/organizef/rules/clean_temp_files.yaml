@@ -1,0 +1,9 @@
+rules:
+  - name: "Remove temporary files"
+    locations:
+      - path: "${path}"
+        filter: files
+        name: 
+          regex: "${temp_patterns}"
+    actions:
+      - delete

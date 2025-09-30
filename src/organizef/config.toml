@@ -1,0 +1,22 @@
+# config.toml for organizef
+
+# Define profiles that combine rules
+[profiles.clean_empty]
+description = "Clean empty directories"
+rules = [
+    { id = "clean_empty_dirs", enabled = true, params = { exclude_dirs = ["important", "backup"] } }
+]
+
+[profiles.dissolve_media]
+description = "Dissolve single media folders"
+rules = [
+    { id = "dissolve_single_media", enabled = true, params = { extensions = [".jpg", ".png", ".mp4"] } }
+]
+
+[profiles.full_cleanup]
+description = "Full cleanup combining clean and dissolve"
+rules = [
+    { id = "clean_empty_dirs", enabled = true, params = { exclude_dirs = ["important"] } },
+    { id = "dissolve_single_media", enabled = true, params = { extensions = [".jpg", ".png"] } },
+    { id = "merge_duplicates", enabled = false, params = {} }
+]

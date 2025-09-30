@@ -1,0 +1,16 @@
+rules:
+  - name: "Move Videos to [video] Folder"
+    locations: ${locations}
+    subfolders: true
+    filters:
+      - extension:
+          - mp4
+          - avi
+          - mkv
+          - mov
+          - wmv
+          - flv
+          - webm
+          - nov
+    actions:
+      - move: "{location}/[video]/{path.relative_to(location)}"
