@@ -61,4 +61,11 @@ rules = [
 
 ]
 
+[profiles.filter_zip_empty_comment]
+description = "筛选注释为空的压缩包"
+tags = ["Filter", "Zip"]
+rules = [
+    { id = "filter_zip_empty_comment", enabled = true, params = { zip_extensions = ["zip"], target_folder = "[zip_no_comment]", exclude_dirs = ["[zip_no_comment]"] } }
+]
+
 

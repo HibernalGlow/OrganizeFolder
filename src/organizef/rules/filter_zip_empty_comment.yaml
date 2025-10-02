@@ -1,0 +1,39 @@
+rules:
+  - name: "筛选注释为空的压缩包"
+    locations: ${locations}
+    subfolders: true
+    filters:
+      - extension: ${zip_extensions}
+      - python: |
+          import zipfile
+
+          target_folder = "${target_folder}"
+          exclude_dirs = ${exclude_dirs}
+
+          path_str = str(path)
+
+          def contains_segment(value: str) -> bool:
+              return bool(value) and value in path_str
+
+          if contains_segment(target_folder):
+              return False
+
+          if exclude_dirs:
+              for dirname in exclude_dirs:
+                  if contains_segment(dirname):
+                      return False
+
+          try:
+              with zipfile.ZipFile(path) as zf:
+                  comment_bytes = zf.comment
+          except Exception as exc:
+              print(f"[organize] 无法读取压缩包注释: {path.name} ({exc})")
+              return False
+
+          if not comment_bytes:
+              return True
+
+          comment_text = comment_bytes.decode('utf-8', errors='ignore').strip()
+          return comment_text == ""
+    actions:
+      - move: "{location}/${target_folder}/{path.relative_to(location)}"

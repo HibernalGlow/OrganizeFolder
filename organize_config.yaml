@@ -1,16 +1,22 @@
 rules:
 - actions:
-  - python: "from pathlib import Path\n\ntarget = Path(path)\nroot = Path(location)\n\
-      \nif target.exists():\n    target.rmdir()\n\nparent = target.parent\nwhile parent.is_dir()\
-      \ and parent != root and not any(parent.iterdir()):\n    parent.rmdir()\n  \
-      \  parent = parent.parent"
+  - move: '{location}/[zip_no_comment]/{path.relative_to(location)}'
   filters:
-  - empty
+  - extension:
+    - zip
+  - python: "import zipfile\n\ntarget_folder = \"[zip_no_comment]\"\nexclude_dirs\
+      \ = ['[zip_no_comment]']\n\npath_str = str(path)\n\ndef contains_segment(value:\
+      \ str) -> bool:\n    return bool(value) and value in path_str\n\nif contains_segment(target_folder):\n\
+      \    return False\n\nif exclude_dirs:\n    for dirname in exclude_dirs:\n  \
+      \      if contains_segment(dirname):\n            return False\n\ntry:\n   \
+      \ with zipfile.ZipFile(path) as zf:\n        comment_bytes = zf.comment\nexcept\
+      \ Exception as exc:\n    print(f\"[organize] 无法读取压缩包注释: {path.name} ({exc})\"\
+      )\n    return False\n\nif not comment_bytes:\n    return True\n\ncomment_text\
+      \ = comment_bytes.decode('utf-8', errors='ignore').strip()\nreturn comment_text\
+      \ == \"\"\n"
   locations:
   - exclude_dirs:
-    - important
-    - backup
-    path: D:\Downloads\test\another
-  name: 清理空目录
+    - '[zip_no_comment]'
+    path: E:\1Hub\EH\4EHV\already
+  name: 筛选注释为空的压缩包
   subfolders: true
-  targets: dirs

@@ -32,13 +32,15 @@ def run(
             typer.echo("No profiles found in config.toml")
             raise typer.Exit(1)
         
-        tag_colors = {"Clean": "green", "Dissolve": "blue", "Move": "yellow"}
+        colors = ["red", "green", "blue", "yellow", "magenta", "cyan", "bright_red", "bright_green", "bright_blue", "bright_yellow", "bright_magenta", "bright_cyan"]
+        all_tags = sorted(set(tag for profile in generator.config['profiles'].values() for tag in profile.get('tags', [])))
+        tag_colors = {tag: colors[i % len(colors)] for i, tag in enumerate(all_tags)}
         
         table = Table(title="Available Profiles")
         table.add_column("No.", style="cyan", no_wrap=True)
-        table.add_column("Profile", style="magenta")
-        table.add_column("Tags", style="white", width=20)
-        table.add_column("Description", style="white")
+        table.add_column("Profile", style="magenta" , overflow="fold")
+        table.add_column("Tags", style="white", overflow="fold")
+        table.add_column("Description", style="white", overflow="fold")
         
         for i, p in enumerate(profiles, 1):
             desc = generator.config['profiles'][p].get('description', '')
