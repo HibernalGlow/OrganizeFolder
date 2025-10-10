@@ -1,8 +1,0 @@
-rules:
-  - name: "dissolve_single_video"
-    locations: ${locations}
-    subfolders: true
-    filters:
-      - extension: ${video_extensions}
-    actions:
-      - move: "{path.parent.parent}/{path.name}"

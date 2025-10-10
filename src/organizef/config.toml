@@ -19,26 +19,6 @@ rules = [
     { id = "clean_trash", enabled = true, params = {} }
 ]
 
-[profiles.dissolve_single_video]
-description = "解散单视频文件夹"
-tags = ["Dissolve"]
-rules = [
-    { id = "dissolve_single_video", enabled = true, params = { video_extensions = ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "nov"] } }
-]
-
-[profiles.dissolve_single_archive]
-description = "解散单压缩包文件夹"
-tags = ["Dissolve"]
-rules = [
-    { id = "dissolve_single_archive", enabled = true, params = { archive_extensions = ["zip", "rar", "7z", "cbz", "cbr"] } }
-]
-
-[profiles.dissolve_direct]
-description = "直接解散指定文件夹"
-tags = ["Dissolve"]
-rules = [
-    { id = "dissolve_direct", enabled = true, params = { dissolve_folder_names = ["target_folder"] } }
-]
 
 [profiles.move_videos]
 description = "移动视频文件到 [video] 文件夹"
