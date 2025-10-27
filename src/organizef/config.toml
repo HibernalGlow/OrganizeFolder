@@ -48,4 +48,17 @@ rules = [
     { id = "filter_zip_empty_comment", enabled = true, params = { zip_extensions = ["zip"], target_folder = "[zip_no_comment]", exclude_dirs = ["[zip_no_comment]"] } }
 ]
 
+[profiles.classify_manga]
+description = "按作品类型分类漫画压缩包（同人志/商业志/单行本/同人动画/同人CG/画集）"
+tags = ["Classify", "Manga"]
+rules = [
+    { id = "classify_manga", enabled = true, params = {
+        doujin_keywords = ["doujin", "doujinshi", "同人", "同人志", "同人本", "同人作品", "同人小说", "(C\\d+)", "(COMIC1☆\\d+)", "(例大祭\\d*)", "(FF\\d+)"],
+        commercial_keywords = ["commercial", "商业", "商业志", "单行本", "magazine", "magazine", "anthology", "アンソロジー", """([^()]*)COMIC[^()]*""", """([^()]*)快楽天[^()]*""", """([^()]*)Comic[^()]*""", """([^()]*)VOL[^()]*""", """([^()]*)永遠娘[^()]*""", """(.*?\\d+.*?)"""],
+        doujin_anime_keywords = ["doujin anime", "同人动画", "同人動畫", "fan animation", "fan made anime", "parody anime"],
+        doujin_cg_keywords = ["doujin cg", "同人CG", "同人cg", "fan cg", "fan art", "fan illustration", "parody cg"],
+        artbook_keywords = ["artbook", "画集", "art book", "illustration book", "イラスト集", "画册"]
+    } }
+]
+
 
