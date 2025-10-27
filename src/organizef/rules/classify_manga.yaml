@@ -35,7 +35,7 @@ rules:
           import re
 
           # 同人志关键词（包括正则表达式）
-          keywords = ["doujin", "doujinshi", "同人", "同人志", "同人本", "同人作品", "同人小说", "(C\\d+)", "(COMIC1☆\\d+)", "(例大祭\\d*)", "(FF\\d+)", "(.*祭\\d*)"]
+          keywords = ["doujin", "doujinshi", "同人", "同人志", "同人本", "同人作品", "同人小说", "vol" ,"(C\\d+)", "(COMIC1☆\\d+)", "(例大祭\\d*)", "(FF\\d+)", "(.*祭\\d*)"]
           filename = path.name.lower()
 
           # 检查是否包含同人志关键词（支持正则表达式）
@@ -96,7 +96,7 @@ rules:
           - cbz
           - cbr
       - python: |
-          keywords = ["tankobon", "单行本", "volume", "vol", "巻", "第", "話"]
+          keywords = ["tankobon", "单行本", "volume", "巻", "第", "話"]
           filename = path.name.lower()
           for keyword in keywords:
               if keyword.lower() in filename:
@@ -162,7 +162,7 @@ rules:
           - cbz
           - cbr
       - python: |
-          keywords = ["artbook", "画集", "art book", "杂图", "#pixiv", "画册"]
+          keywords = ["artbook", "画集", "#Fanbox图集", "杂图", "#pixiv", "画册"]
           filename = path.name.lower()
 
           # 检查是否包含画集关键词
