@@ -32,15 +32,22 @@ rules:
           - cbz
           - cbr
       - python: |
-          # 同人志关键词
-          keywords = ["doujin", "doujinshi", "同人", "同人志", "同人本", "同人作品", "同人小说"]
+          import re
 
+          # 同人志关键词（包括正则表达式）
+          keywords = ["doujin", "doujinshi", "同人", "同人志", "同人本", "同人作品", "同人小说", "(C\\d+)", "(COMIC1☆\\d+)", "(例大祭\\d*)", "(FF\\d+)", "(.*祭\\d*)"]
           filename = path.name.lower()
 
-          # 检查是否包含同人志关键词
+          # 检查是否包含同人志关键词（支持正则表达式）
           for keyword in keywords:
-              if keyword.lower() in filename:
-                  return True
+              if keyword.startswith('(') and keyword.endswith(')'):
+                  # 正则表达式匹配
+                  if re.search(keyword, filename, re.IGNORECASE):
+                      return True
+              else:
+                  # 普通关键词匹配
+                  if keyword.lower() in filename:
+                      return True
 
           return False
     actions:
@@ -57,15 +64,22 @@ rules:
           - cbz
           - cbr
       - python: |
-          # 商业志关键词
-          keywords = ["magazine", "mag", "杂志", "商业志", "月刊", "週刊", "周刊", "comic", "コミック"]
+          import re
 
+          # 商业志关键词（包括正则表达式）
+          keywords = ["commercial", "商业", "商业志", "单行本", "magazine", "magazine", "anthology", "アンソロジー", "([^()]*)COMIC[^()]*", "([^()]*)快楽天[^()]*", "([^()]*)Comic[^()]*", "([^()]*)VOL[^()]*", "([^()]*)永遠娘[^()]*"]
           filename = path.name.lower()
 
-          # 检查是否包含商业志关键词
+          # 检查是否包含商业志关键词（支持正则表达式）
           for keyword in keywords:
-              if keyword.lower() in filename:
-                  return True
+              if keyword.startswith('(') and keyword.endswith(')'):
+                  # 正则表达式匹配
+                  if re.search(keyword, filename, re.IGNORECASE):
+                      return True
+              else:
+                  # 普通关键词匹配
+                  if keyword.lower() in filename:
+                      return True
 
           return False
     actions:
@@ -82,16 +96,11 @@ rules:
           - cbz
           - cbr
       - python: |
-          # 单行本关键词
-          keywords = ["tankobon", "单行本", "単行本", "volume", "vol", "巻", "第"]
-
+          keywords = ["tankobon", "单行本", "volume", "vol", "巻", "第", "話"]
           filename = path.name.lower()
-
-          # 检查是否包含单行本关键词
           for keyword in keywords:
               if keyword.lower() in filename:
                   return True
-
           return False
     actions:
       - move: "{location}/3. 单行本/{path.name}"
@@ -107,9 +116,7 @@ rules:
           - cbz
           - cbr
       - python: |
-          # 同人动画关键词
-          keywords = ["animation", "anime", "动画", "同人动画", "ova", "同人ova", "動畫"]
-
+          keywords = ["doujin anime", "同人动画", "同人動畫", "fan animation", "fan made anime", "parody anime"]
           filename = path.name.lower()
 
           # 检查是否包含同人动画关键词
@@ -132,9 +139,7 @@ rules:
           - cbz
           - cbr
       - python: |
-          # 同人CG关键词
-          keywords = ["cg", "computer graphics", "同人cg", "电脑绘图", "数位绘图", "digital art"]
-
+          keywords = ["doujin cg", "同人CG", "同人cg", "fan cg", "fan art", "fan illustration", "parody cg"]
           filename = path.name.lower()
 
           # 检查是否包含同人CG关键词
@@ -157,9 +162,7 @@ rules:
           - cbz
           - cbr
       - python: |
-          # 画集关键词
-          keywords = ["artbook", "pixiv", "fanbox", "fantia", "patron", "illustration", "画集", "イラスト", "插画集", "art collection"]
-
+          keywords = ["artbook", "画集", "art book", "杂图", "#pixiv", "画册"]
           filename = path.name.lower()
 
           # 检查是否包含画集关键词
@@ -171,3 +174,4 @@ rules:
     actions:
       - move: "{location}/6. 画集/{path.name}"
 
+  # 检测损坏的压缩包
