@@ -312,11 +312,15 @@ def run_interactive() -> None:
                 total_released_media += count
             if operations["nested_mode"]:
                 console.print("\n[bold cyan]>>> 解散嵌套的单一文件夹...[/bold cyan]")
-                count = flatten_single_subfolder(path, exclude_keywords)
+                result = flatten_single_subfolder(path, exclude_keywords)
+                # 兼容新返回值 (count, skipped)
+                count = result[0] if isinstance(result, tuple) else result
                 total_flattened_nested += count
             if operations["archive_mode"]:
                 console.print("\n[bold cyan]>>> 解散单压缩包文件夹...[/bold cyan]")
-                count = release_single_archive_folder(path, exclude_keywords, preview_mode)
+                result = release_single_archive_folder(path, exclude_keywords, preview_mode)
+                # 兼容新返回值 (count, skipped)
+                count = result[0] if isinstance(result, tuple) else result
                 total_released_archive += count
     
     # 输出操作总结
@@ -446,11 +450,13 @@ def dissolve(
                 total_released_media += count
             if nested_mode:
                 typer.echo("\n>>> 解散嵌套的单一文件夹...")
-                count = flatten_single_subfolder(path, exclude_keywords)
+                result = flatten_single_subfolder(path, exclude_keywords)
+                count = result[0] if isinstance(result, tuple) else result
                 total_flattened_nested += count
             if archive_mode:
                 typer.echo("\n>>> 解散单压缩包文件夹...")
-                count = release_single_archive_folder(path, exclude_keywords, preview)
+                result = release_single_archive_folder(path, exclude_keywords, preview)
+                count = result[0] if isinstance(result, tuple) else result
                 total_released_archive += count
     
     # 输出操作总结
