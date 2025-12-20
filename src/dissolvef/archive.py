@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from rich.console import Console
-from rich.status import Status
+import rich.status
 from loguru import logger
 
 from .path_filter import filter_archive_paths
@@ -61,7 +61,7 @@ def release_single_archive_folder(
     skipped_count = 0
     similarity_skipped = 0
     
-    status = Status("正在扫描压缩包文件夹...", spinner="dots")
+    status = rich.status.Status("正在扫描压缩包文件夹...", spinner="dots")
     status_started = False
     
     if not preview:

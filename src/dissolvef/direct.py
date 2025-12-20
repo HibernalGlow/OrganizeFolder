@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 from typing import Tuple
 from rich.console import Console
-from rich.status import Status
+import rich.status
 from loguru import logger
 
 console = Console()
@@ -112,7 +112,7 @@ def dissolve_folder(path, file_conflict='auto', dir_conflict='auto', preview=Fal
         # 创建一个Rich状态指示器
         status = None
         if use_status and not preview:
-            status = Status("正在扫描文件夹内容...", spinner="dots")
+            status = rich.status.Status("正在扫描文件夹内容...", spinner="dots")
             status.start()
         
         # 获取所有项目并排序（文件优先）

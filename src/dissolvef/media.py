@@ -8,7 +8,7 @@ import os
 import shutil
 from pathlib import Path
 from rich.console import Console
-from rich.status import Status
+import rich.status
 from loguru import logger
 
 console = Console()
@@ -54,7 +54,7 @@ def release_single_media_folder(path, exclude_keywords=None, preview=False):
           # 计数器
     processed_count = 0
     # 创建一个Rich状态指示器
-    status = Status("正在扫描媒体文件夹...", spinner="dots")
+    status = rich.status.Status("正在扫描媒体文件夹...", spinner="dots")
     status_started = False
     if not preview:
         status.start()

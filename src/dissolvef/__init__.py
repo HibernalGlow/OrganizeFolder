@@ -17,6 +17,7 @@ if sys.platform == 'win32':
         pass
 
 # 非交互式环境下禁用 rich Status（避免 "Only one live display" 错误）
+# 必须在导入其他模块之前执行
 def _is_interactive():
     try:
         return sys.stdout.isatty() and sys.stderr.isatty()
@@ -24,8 +25,8 @@ def _is_interactive():
         return False
 
 if not _is_interactive():
-    # Monkey patch Status 为空操作
-    from rich import status as rich_status
+    # Monkey patch Status 为空操作，必须在其他模块导入 rich.status 之前
+    import rich.status
     
     class _DummyStatus:
         def __init__(self, *args, **kwargs):
@@ -41,7 +42,14 @@ if not _is_interactive():
         def __exit__(self, *args):
             pass
     
-    rich_status.Status = _DummyStatus
+    rich.status.Status = _DummyStatus
+    
+    # 同时 patch rich.console 中可能缓存的引用
+    try:
+        import rich.console
+        rich.console.Status = _DummyStatus
+    except:
+        pass
 
 from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional

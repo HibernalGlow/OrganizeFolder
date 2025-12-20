@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from rich.console import Console
-from rich.status import Status
+import rich.status
 from loguru import logger
 
 from .similarity import check_similarity
@@ -24,7 +24,8 @@ def flatten_single_subfolder(
     exclude_keywords: Optional[List[str]] = None,
     preview: bool = False,
     similarity_threshold: float = 0.0,
-    enable_undo: bool = True
+    enable_undo: bool = True,
+    on_log: Optional[callable] = None
 ) -> Tuple[int, int]:
     """
     如果一个文件夹下只有一个文件夹，就将该文件夹的子文件夹释放掉，将其中的文件和文件夹移动到母文件夹
@@ -35,10 +36,21 @@ def flatten_single_subfolder(
         preview (bool): 如果为 True，只预览操作不实际执行
         similarity_threshold (float): 相似度阈值 (0.0-1.0)，0 表示不检测
         enable_undo (bool): 是否启用撤销记录
+        on_log (callable): 日志回调函数，接收字符串参数
     
     返回:
         Tuple[int, int]: (处理的文件夹数量, 因相似度不足跳过的数量)
     """
+    
+    def _log(msg: str):
+        """输出日志到控制台和回调"""
+        console.print(msg)
+        if on_log:
+            # 移除 rich 标记
+            import re
+            clean_msg = re.sub(r'\[/?[^\]]+\]', '', msg)
+            on_log(clean_msg)
+    
     if exclude_keywords is None:
         exclude_keywords = []
     
@@ -49,7 +61,7 @@ def flatten_single_subfolder(
     skipped_count = 0
     
     # 创建状态指示器
-    status = Status("正在扫描文件夹结构...", spinner="dots")
+    status = rich.status.Status("正在扫描文件夹结构...", spinner="dots")
     status_started = False
     
     if not preview:
@@ -60,7 +72,7 @@ def flatten_single_subfolder(
             undo_manager.start_batch('nested', str(path))
     
     if preview:
-        console.print(f"[bold cyan]预览模式:[/bold cyan] 不会实际移动文件")
+        _log(f"[bold cyan]预览模式:[/bold cyan] 不会实际移动文件")
     
     try:
         for root, dirs, files in os.walk(path):
@@ -85,10 +97,10 @@ def flatten_single_subfolder(
                     passed, similarity = check_similarity(parent_name, subfolder_name, similarity_threshold)
                     if not passed:
                         skipped_count += 1
-                        console.print(f"  [yellow]跳过[/yellow]: [cyan]{parent_name}[/cyan]/[yellow]{subfolder_name}[/yellow] (相似度 {similarity:.0%} < {similarity_threshold:.0%})")
+                        _log(f"  [yellow]跳过[/yellow]: [cyan]{parent_name}[/cyan]/[yellow]{subfolder_name}[/yellow] (相似度 {similarity:.0%} < {similarity_threshold:.0%})")
                         continue
                     else:
-                        console.print(f"  [green]匹配[/green]: [cyan]{parent_name}[/cyan]/[green]{subfolder_name}[/green] (相似度 {similarity:.0%})")
+                        _log(f"  [green]匹配[/green]: [cyan]{parent_name}[/cyan]/[green]{subfolder_name}[/green] (相似度 {similarity:.0%})")
                 
                 try:
                     # 找到最深层的单一子文件夹
@@ -124,7 +136,7 @@ def flatten_single_subfolder(
                                     undo_manager.record_move(src_item_path, dst_item_path)
                             except Exception as e:
                                 logger.error(f"移动失败: {src_item_path} - {e}")
-                                console.print(f"[red]移动失败[/red]: {src_item_path} - {e}")
+                                _log(f"[red]移动失败[/red]: {src_item_path} - {e}")
                     
                     # 获取原始子文件夹的路径
                     original_subfolder = root_path / dirs[0]
@@ -137,13 +149,13 @@ def flatten_single_subfolder(
                             if enable_undo:
                                 undo_manager.record_delete_dir(subfolder_path)
                             processed_count += 1
-                            console.print(f"已解散嵌套文件夹: [cyan]{original_subfolder}[/cyan]")
+                            _log(f"已解散嵌套文件夹: [cyan]{original_subfolder}[/cyan]")
                         except Exception as e:
                             logger.error(f"删除文件夹失败: {subfolder_path} - {e}")
-                            console.print(f"[red]删除文件夹失败[/red]: {subfolder_path} - {e}")
+                            _log(f"[red]删除文件夹失败[/red]: {subfolder_path} - {e}")
                     elif preview:
                         processed_count += 1
-                        console.print(f"将解散嵌套文件夹: [cyan]{original_subfolder}[/cyan]")
+                        _log(f"将解散嵌套文件夹: [cyan]{original_subfolder}[/cyan]")
                         
                 except Exception as e:
                     logger.error(f"处理文件夹失败: {root} - {e}")
@@ -152,7 +164,7 @@ def flatten_single_subfolder(
         if not preview and enable_undo:
             operation_id = undo_manager.finish_batch()
             if operation_id:
-                console.print(f"🔄 撤销 ID: [green]{operation_id}[/green]")
+                _log(f"🔄 撤销 ID: [green]{operation_id}[/green]")
         
         if status_started:
             status.stop()
@@ -161,7 +173,7 @@ def flatten_single_subfolder(
         if skipped_count > 0:
             result_msg += f"，跳过 {skipped_count} 个（相似度不足）"
         logger.info(result_msg)
-        console.print(f"\n{result_msg}")
+        _log(f"\n{result_msg}")
         
         return processed_count, skipped_count
         
