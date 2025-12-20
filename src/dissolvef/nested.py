@@ -85,10 +85,10 @@ def flatten_single_subfolder(
                     passed, similarity = check_similarity(parent_name, subfolder_name, similarity_threshold)
                     if not passed:
                         skipped_count += 1
-                        console.print(f"  ⏭️ 跳过: [cyan]{parent_name}[/cyan]/[yellow]{subfolder_name}[/yellow] (相似度 {similarity:.0%} < {similarity_threshold:.0%})")
+                        console.print(f"  [yellow]跳过[/yellow]: [cyan]{parent_name}[/cyan]/[yellow]{subfolder_name}[/yellow] (相似度 {similarity:.0%} < {similarity_threshold:.0%})")
                         continue
                     else:
-                        console.print(f"  ✓ 匹配: [cyan]{parent_name}[/cyan]/[green]{subfolder_name}[/green] (相似度 {similarity:.0%})")
+                        console.print(f"  [green]匹配[/green]: [cyan]{parent_name}[/cyan]/[green]{subfolder_name}[/green] (相似度 {similarity:.0%})")
                 
                 try:
                     # 找到最深层的单一子文件夹

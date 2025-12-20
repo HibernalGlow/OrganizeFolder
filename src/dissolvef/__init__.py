@@ -3,6 +3,19 @@
 包含了解散嵌套文件夹、解散单媒体文件夹、直接解散文件夹等功能
 支持相似度检测和撤销
 """
+
+# Windows 平台强制使用 UTF-8 编码，支持 Unicode 字符输出
+import sys
+import io
+if sys.platform == 'win32':
+    try:
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except:
+        pass
+
 from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional
 
