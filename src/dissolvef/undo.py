@@ -7,6 +7,7 @@
 import json
 import os
 import shutil
+import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
@@ -103,7 +104,8 @@ class UndoManager:
         if not self._current_operations:
             return None
         
-        operation_id = f"dissolve-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        # 使用时间戳 + UUID 确保 ID 唯一性
+        operation_id = f"dissolve-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
         record = UndoRecord(
             id=operation_id,
             timestamp=datetime.now().isoformat(),
