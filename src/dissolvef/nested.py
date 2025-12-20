@@ -1,44 +1,66 @@
 """
 嵌套文件夹解散模块
 
-提供解散嵌套单一文件夹的功能
+提供解散嵌套单一文件夹的功能，支持相似度检测和撤销
 """
 
 import os
 import shutil
 from pathlib import Path
+from typing import List, Optional, Tuple
+
 from rich.console import Console
 from rich.status import Status
 from loguru import logger
 
+from .similarity import check_similarity
+from .undo import undo_manager
+
 console = Console()
 
-def flatten_single_subfolder(path, exclude_keywords=None):
+
+def flatten_single_subfolder(
+    path,
+    exclude_keywords: Optional[List[str]] = None,
+    preview: bool = False,
+    similarity_threshold: float = 0.0,
+    enable_undo: bool = True
+) -> Tuple[int, int]:
     """
     如果一个文件夹下只有一个文件夹，就将该文件夹的子文件夹释放掉，将其中的文件和文件夹移动到母文件夹
 
     参数:
-    path (str/Path): 目标路径
-    exclude_keywords (list): 排除关键词列表
+        path (str/Path): 目标路径
+        exclude_keywords (list): 排除关键词列表
+        preview (bool): 如果为 True，只预览操作不实际执行
+        similarity_threshold (float): 相似度阈值 (0.0-1.0)，0 表示不检测
+        enable_undo (bool): 是否启用撤销记录
     
     返回:
-    int: 处理的文件夹数量
-    """    # 初始化参数
+        Tuple[int, int]: (处理的文件夹数量, 因相似度不足跳过的数量)
+    """
     if exclude_keywords is None:
         exclude_keywords = []
     
-    # 转换路径为Path对象
     if isinstance(path, str):
         path = Path(path)
-      # 计数器
+    
     processed_count = 0
-    # 创建一个Rich状态指示器
+    skipped_count = 0
+    
+    # 创建状态指示器
     status = Status("正在扫描文件夹结构...", spinner="dots")
     status_started = False
     
-    # 启动状态指示器
-    status.start()
-    status_started = True
+    if not preview:
+        status.start()
+        status_started = True
+        # 开始撤销批次
+        if enable_undo:
+            undo_manager.start_batch('nested', str(path))
+    
+    if preview:
+        console.print(f"[bold cyan]预览模式:[/bold cyan] 不会实际移动文件")
     
     try:
         for root, dirs, files in os.walk(path):
@@ -47,28 +69,42 @@ def flatten_single_subfolder(path, exclude_keywords=None):
             # 检查当前路径是否包含排除关键词
             if any(keyword in str(root) for keyword in exclude_keywords):
                 continue
-              # 更新状态
-            status.update(f"检查文件夹: {root_path.name}")
-            # logger.info(f"检查文件夹: {root}")
+            
+            # 更新状态
+            if status_started:
+                status.update(f"检查文件夹: {root_path.name}")
             
             # 如果当前文件夹只有一个子文件夹且没有文件
             if len(dirs) == 1 and not files:
-                subfolder_path = root_path / dirs[0]
+                subfolder_name = dirs[0]
+                subfolder_path = root_path / subfolder_name
+                parent_name = root_path.name
+                
+                # 相似度检测
+                if similarity_threshold > 0:
+                    passed, similarity = check_similarity(parent_name, subfolder_name, similarity_threshold)
+                    if not passed:
+                        skipped_count += 1
+                        console.print(f"  ⏭️ 跳过: [cyan]{parent_name}[/cyan]/[yellow]{subfolder_name}[/yellow] (相似度 {similarity:.0%} < {similarity_threshold:.0%})")
+                        continue
+                    else:
+                        console.print(f"  ✓ 匹配: [cyan]{parent_name}[/cyan]/[green]{subfolder_name}[/green] (相似度 {similarity:.0%})")
+                
                 try:
-                    while True:  # 处理嵌套的单文件夹
-                        # 检查子文件夹中是否只有一个文件夹且没有文件
-                        sub_items = list(subfolder_path.iterdir())
+                    # 找到最深层的单一子文件夹
+                    current_subfolder = subfolder_path
+                    while True:
+                        sub_items = list(current_subfolder.iterdir())
                         sub_dirs = [item for item in sub_items if item.is_dir()]
                         sub_files = [item for item in sub_items if item.is_file()]
                         
                         if len(sub_dirs) == 1 and not sub_files:
-                            # 更新子文件夹路径到更深一层
-                            subfolder_path = sub_dirs[0]
+                            current_subfolder = sub_dirs[0]
                             continue
-                        break  # 如果不是单文件夹，退出循环
+                        break
                     
                     # 移动最深层子文件夹中的所有内容到母文件夹
-                    for item in subfolder_path.iterdir():
+                    for item in current_subfolder.iterdir():
                         src_item_path = item
                         dst_item_path = root_path / item.name
                         
@@ -79,53 +115,69 @@ def flatten_single_subfolder(path, exclude_keywords=None):
                                 new_name = f"{item.stem}_{counter}{item.suffix}" if item.suffix else f"{item.name}_{counter}"
                                 dst_item_path = root_path / new_name
                                 counter += 1
-                          # 移动文件
-                        try:
-                            shutil.move(str(src_item_path), str(dst_item_path))
-                            # logger.info(f"已移动: {src_item_path} -> {dst_item_path}")
-                            
-                        except Exception as e:
-                            logger.error(f"移动失败: {src_item_path} - {e}")
-                            console.print(f"[red]移动失败[/red]: {src_item_path} - {e}")
+                        
+                        if not preview:
+                            try:
+                                shutil.move(str(src_item_path), str(dst_item_path))
+                                # 记录撤销操作
+                                if enable_undo:
+                                    undo_manager.record_move(src_item_path, dst_item_path)
+                            except Exception as e:
+                                logger.error(f"移动失败: {src_item_path} - {e}")
+                                console.print(f"[red]移动失败[/red]: {src_item_path} - {e}")
                     
-                    # 获取原始子文件夹的路径以便打印
+                    # 获取原始子文件夹的路径
                     original_subfolder = root_path / dirs[0]
                     
                     # 检查是否成功移动了所有内容
-                    if not any(subfolder_path.iterdir()):                        # 删除空的子文件夹
+                    if not preview and not any(current_subfolder.iterdir()):
                         try:
                             shutil.rmtree(str(subfolder_path))
+                            # 记录删除目录操作
+                            if enable_undo:
+                                undo_manager.record_delete_dir(subfolder_path)
                             processed_count += 1
-                            
-                            # logger.info(f"已解散嵌套文件夹: {original_subfolder}")
                             console.print(f"已解散嵌套文件夹: [cyan]{original_subfolder}[/cyan]")
-                            
                         except Exception as e:
                             logger.error(f"删除文件夹失败: {subfolder_path} - {e}")
                             console.print(f"[red]删除文件夹失败[/red]: {subfolder_path} - {e}")
-                    else:
-                        # logger.info(f"文件夹不为空，无法删除: {subfolder_path}")
-                        pass
-                except Exception as e:                    
-                    logger.error(f"处理文件夹失败: {root} - {e}")          # 打印处理结果
+                    elif preview:
+                        processed_count += 1
+                        console.print(f"将解散嵌套文件夹: [cyan]{original_subfolder}[/cyan]")
+                        
+                except Exception as e:
+                    logger.error(f"处理文件夹失败: {root} - {e}")
+        
+        # 完成撤销批次
+        if not preview and enable_undo:
+            operation_id = undo_manager.finish_batch()
+            if operation_id:
+                console.print(f"🔄 撤销 ID: [green]{operation_id}[/green]")
+        
         if status_started:
             status.stop()
-        logger.info(f"解散嵌套文件夹操作完成，共处理了 {processed_count} 个文件夹")
         
-        return processed_count
+        result_msg = f"解散嵌套文件夹{'预览' if preview else '操作'}完成，共{'发现' if preview else '处理了'} {processed_count} 个文件夹"
+        if skipped_count > 0:
+            result_msg += f"，跳过 {skipped_count} 个（相似度不足）"
+        logger.info(result_msg)
+        console.print(f"\n{result_msg}")
+        
+        return processed_count, skipped_count
+        
     except Exception as e:
         logger.error(f"解散嵌套文件夹出错: {e}")
         if status_started:
             status.stop()
         console.print(f"[red]解散嵌套文件夹出错[/red]: {e}")
-        return processed_count
+        return processed_count, skipped_count
     finally:
-        # 确保状态指示器被停止
         if status_started:
             try:
                 status.stop()
             except:
                 pass
+
 
 # 直接运行此文件时的入口点
 if __name__ == "__main__":
@@ -134,20 +186,24 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='解散嵌套的单一文件夹')
     parser.add_argument('path', type=str, help='要处理的路径')
     parser.add_argument('--exclude', type=str, help='排除关键词，用逗号分隔')
+    parser.add_argument('--preview', '-p', action='store_true', help='预览模式')
+    parser.add_argument('--similarity', '-s', type=float, default=0.0, help='相似度阈值 (0.0-1.0)')
     
     args = parser.parse_args()
     
-    # 处理排除关键词
     exclude_keywords = []
     if args.exclude:
         exclude_keywords = [keyword.strip() for keyword in args.exclude.split(',')]
     
-    # 转换路径
     path = Path(args.path)
     if not path.exists():
         console.print(f"[red]错误：路径不存在[/red] - {path}")
         exit(1)
     
     console.print(f"开始处理路径: [cyan]{path}[/cyan]")
-    count = flatten_single_subfolder(path, exclude_keywords)
-    console.print(f"处理完成，共解散了 [green]{count}[/green] 个嵌套文件夹")
+    count, skipped = flatten_single_subfolder(
+        path, exclude_keywords, 
+        preview=args.preview,
+        similarity_threshold=args.similarity
+    )
+    console.print(f"处理完成，共解散了 [green]{count}[/green] 个嵌套文件夹，跳过 [yellow]{skipped}[/yellow] 个")
