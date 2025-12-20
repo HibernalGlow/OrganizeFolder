@@ -181,7 +181,7 @@ def flatten_single_subfolder(
         logger.error(f"解散嵌套文件夹出错: {e}")
         if status_started:
             status.stop()
-        console.print(f"[red]解散嵌套文件夹出错[/red]: {e}")
+        _log(f"[red]解散嵌套文件夹出错[/red]: {e}")
         return processed_count, skipped_count
     finally:
         if status_started:
