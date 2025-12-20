@@ -43,9 +43,9 @@ def calculate_similarity(str1: str, str2: str) -> float:
     if not str1 or not str2:
         return 0.0
     
-    # 清理名称
-    n1 = clean_name(str1)
-    n2 = clean_name(str2)
+    # 清理名称并统一小写
+    n1 = clean_name(str1).lower()
+    n2 = clean_name(str2).lower()
     
     if not n1 or not n2:
         return 0.0
