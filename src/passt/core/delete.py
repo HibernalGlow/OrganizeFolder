@@ -24,7 +24,7 @@ class SafeDeleter:
         self.retry_delay = retry_delay
     
     def _get_windows_long_path(self, path: Path) -> str:
-        """获取Windows长路径格式，解决末尾空格问题
+        r"""获取Windows长路径格式，解决末尾空格问题
         
         使用 \\?\ 前缀强制Windows内核原样读取路径，不进行自动修剪
         
