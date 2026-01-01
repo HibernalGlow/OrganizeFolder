@@ -6,8 +6,12 @@ from rich.console import Console
 from rich.prompt import Prompt, Confirm
 import time
 import shutil
+import os
+import sys
+
+
 class SafeDeleter:
-    """安全删除器，处理文件被占用的情况"""
+    """安全删除器，处理文件被占用的情况和Windows路径末尾空格问题"""
     
     def __init__(self, max_retries: int = 5, retry_delay: float = 1.0):
         """初始化安全删除器
@@ -18,7 +22,22 @@ class SafeDeleter:
         """
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-       
+    
+    def _get_windows_long_path(self, path: Path) -> str:
+        """获取Windows长路径格式，解决末尾空格问题
+        
+        使用 \\?\ 前缀强制Windows内核原样读取路径，不进行自动修剪
+        
+        Args:
+            path: 原始路径
+            
+        Returns:
+            str: Windows长路径格式的字符串
+        """
+        if sys.platform == "win32":
+            abs_path = path.resolve()
+            return f"\\\\?\\{abs_path}"
+        return str(path.resolve())
     
     def find_file_processes(self, file_path: Path) -> List[psutil.Process]:
         """查找占用指定文件的进程
@@ -69,18 +88,16 @@ class SafeDeleter:
                 logger.info(f"尝试终止进程: {proc_name} (PID: {proc_pid})")
                 
                 if force:
-                    proc.kill()  # 强制终止
+                    proc.kill()
                     logger.info(f"强制终止进程: {proc_name} (PID: {proc_pid})")
                 else:
-                    proc.terminate()  # 优雅终止
+                    proc.terminate()
                     logger.info(f"优雅终止进程: {proc_name} (PID: {proc_pid})")
                 
-                # 等待进程结束
                 try:
                     proc.wait(timeout=3)
                 except psutil.TimeoutExpired:
                     if not force:
-                        # 如果优雅终止失败，尝试强制终止
                         logger.warning(f"优雅终止超时，强制终止进程: {proc_name}")
                         proc.kill()
                         try:
@@ -101,7 +118,7 @@ class SafeDeleter:
         return success
     
     def safe_delete_file(self, file_path: Path, force_terminate: bool = False) -> bool:
-        """安全删除文件
+        """安全删除文件，支持Windows路径末尾空格处理
         
         Args:
             file_path: 要删除的文件路径
@@ -116,15 +133,13 @@ class SafeDeleter:
         
         for attempt in range(self.max_retries):
             try:
-                # 尝试直接删除
                 file_path.unlink()
                 logger.info(f"✅ 成功删除文件: {file_path.name}")
                 return True
                 
-            except PermissionError as e:
-                logger.warning(f"文件被占用，尝试第 {attempt + 1}/{self.max_retries} 次: {file_path.name}")
+            except (PermissionError, OSError) as e:
+                logger.warning(f"文件删除失败，尝试第 {attempt + 1}/{self.max_retries} 次: {file_path.name}")
                 
-                # 查找占用文件的进程
                 processes = self.find_file_processes(file_path)
                 
                 if processes:
@@ -135,26 +150,30 @@ class SafeDeleter:
                         except (psutil.NoSuchProcess, psutil.AccessDenied):
                             pass
                     
-                    # 询问是否终止进程（仅在第一次尝试时询问）
                     if attempt == 0 and not force_terminate:
                         if Confirm.ask(f"是否尝试关闭占用文件 {file_path.name} 的进程？", default=True):
                             force_terminate = True
                     
                     if force_terminate:
-                        # 先尝试优雅终止
                         self.terminate_processes(processes, force=False)
-                        time.sleep(1)  # 等待进程完全退出
+                        time.sleep(1)
                         
-                        # 如果还有进程占用，强制终止
                         remaining_processes = self.find_file_processes(file_path)
                         if remaining_processes:
                             logger.warning("仍有进程占用文件，尝试强制终止")
                             self.terminate_processes(remaining_processes, force=True)
                             time.sleep(1)
                 else:
-                    logger.debug("未发现占用进程，可能是系统权限问题")
+                    logger.debug("未发现占用进程，尝试使用Windows长路径格式")
+                    if sys.platform == "win32":
+                        try:
+                            long_path = self._get_windows_long_path(file_path)
+                            os.unlink(long_path)
+                            logger.info(f"✅ 使用长路径格式成功删除文件: {file_path.name}")
+                            return True
+                        except Exception as long_path_error:
+                            logger.debug(f"长路径删除也失败: {long_path_error}")
                 
-                # 等待后重试
                 if attempt < self.max_retries - 1:
                     time.sleep(self.retry_delay)
                     
@@ -197,6 +216,17 @@ class SafeDeleter:
                 return True
             except OSError as e:
                 logger.warning(f"删除文件夹失败，尝试第 {attempt + 1}/{self.max_retries} 次: {e}")
+                
+                # 在Windows上尝试长路径格式
+                if sys.platform == "win32" and attempt == self.max_retries - 1:
+                    try:
+                        long_path = self._get_windows_long_path(folder_path)
+                        os.rmdir(long_path)
+                        logger.info(f"✅ 使用长路径格式成功删除文件夹: {folder_path.name}")
+                        return True
+                    except Exception as long_path_error:
+                        logger.debug(f"长路径删除也失败: {long_path_error}")
+                
                 if attempt < self.max_retries - 1:
                     time.sleep(self.retry_delay)
         
@@ -208,4 +238,3 @@ class SafeDeleter:
         except Exception as e:
             logger.error(f"❌ 删除文件夹失败: {e}")
             return False
-
