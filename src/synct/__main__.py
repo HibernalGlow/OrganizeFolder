@@ -10,6 +10,7 @@ from synct.core.input_path import get_path, get_paths
 from synct.core.extract_timestamp import extract_timestamp_from_name
 from synct.core.sync_file_time import sync_folder_file_time
 from synct.core.archive_folders import archive_folder, FORMATS
+from synct.core.file_mode import scan_files_for_timestamp, categorize_files, archive_file
 from datetime import datetime
 
 console = Console()
@@ -183,8 +184,171 @@ def process_single_folder(path, base_dst, format_key, mode):
 
     return operations, folders_with_timestamp
 
+
+def file_main():
+    """文件模式主入口"""
+    logger.info("开始执行文件模式 - 根据文件名时间戳分类")
+    paths = get_paths()
+    if not paths:
+        logger.warning("未获取到有效路径，程序退出")
+        return
+
+    if len(paths) == 1:
+        logger.info(f"单文件夹模式，工作目录: {paths[0]}")
+        console.print(f"[green]工作目录: {paths[0]}[/green]")
+    else:
+        logger.info(f"多文件夹模式，获取到 {len(paths)} 个工作目录")
+        console.print(f"[green]多文件夹模式，获取到 {len(paths)} 个工作目录[/green]")
+        for i, path in enumerate(paths, 1):
+            console.print(f"  {i}. {path}")
+
+    # 是否递归扫描
+    recursive = Confirm.ask("是否递归扫描子目录？", default=False)
+    logger.info(f"递归扫描: {recursive}")
+
+    # 归档目录策略
+    console.print("\n[bold]归档目录策略选择:[/bold]")
+    console.print("1. 在文件夹内创建'归档'目录")
+    console.print("2. 直接在当前文件夹下创建时间戳文件夹")
+    strategy = IntPrompt.ask("请选择归档策略", choices=["1", "2"], default=2)
+    use_archive_folder = strategy == 1
+
+    # 格式选择
+    console.print("\n[bold]可用的归档格式:[/bold]")
+    format_table = Table(show_header=True)
+    format_table.add_column("序号", style="cyan")
+    format_table.add_column("格式名")
+    format_table.add_column("类型")
+    format_table.add_column("示例")
+
+    format_index_map = {}
+    format_index = 1
+
+    for key, format_spec in FORMATS.items():
+        if not isinstance(format_spec, list):
+            sample = datetime.now().strftime(format_spec)
+            format_table.add_row(str(format_index), key, "单层", sample)
+            format_index_map[format_index] = key
+            format_index += 1
+
+    for key, format_spec in FORMATS.items():
+        if isinstance(format_spec, list):
+            example_path = ""
+            for fmt in format_spec:
+                example_path = os.path.join(example_path, datetime.now().strftime(fmt))
+            format_table.add_row(str(format_index), key, "多层", example_path)
+            format_index_map[format_index] = key
+            format_index += 1
+
+    console.print(format_table)
+
+    format_choice = IntPrompt.ask("请输入序号选择归档格式", default=2)
+    while format_choice not in format_index_map:
+        console.print(f"[red]无效的序号，请输入1-{max(format_index_map.keys())}之间的数字")
+        format_choice = IntPrompt.ask("请输入序号选择归档格式", default=2)
+
+    format_key = format_index_map[format_choice]
+    logger.info(f"选择格式: {format_key}")
+    console.print(f"已选择格式: [green]{format_key}")
+
+    # 扫描并收集所有文件
+    all_operations = []
+    for path in paths:
+        if use_archive_folder:
+            base_dst = os.path.join(path, '归档')
+        else:
+            base_dst = path
+
+        console.print(f"\n[cyan]扫描: {path}[/cyan]")
+        files = scan_files_for_timestamp(path, recursive=recursive)
+        operations = categorize_files(files, base_dst, format_key)
+
+        for op in operations:
+            op['source_path'] = path
+            op['base_dst'] = base_dst
+        all_operations.extend(operations)
+
+    if not all_operations:
+        console.print("[yellow]没有找到符合条件的文件")
+        return
+
+    # 预览
+    console.print(f"\n[bold cyan]═══ 操作预览 ═══[/bold cyan]")
+    console.print(f"[bold]共 {len(all_operations)} 个文件将被移动[/bold]\n")
+    
+    # 统计目标目录
+    target_dirs = {}
+    for op in all_operations:
+        rel_dir = os.path.dirname(op['rel_destination'])
+        if rel_dir not in target_dirs:
+            target_dirs[rel_dir] = []
+        target_dirs[rel_dir].append(op['filename'])
+    
+    # 显示目标目录统计
+    console.print("[bold]目标目录分布:[/bold]")
+    for target_dir, files in sorted(target_dirs.items()):
+        console.print(f"  [green]{target_dir}/[/green] ({len(files)} 个文件)")
+    
+    # 预览表格
+    console.print("\n[bold]文件操作详情:[/bold]")
+    preview_table = Table(show_header=True, header_style="bold")
+    preview_table.add_column("原文件名", style="yellow")
+    preview_table.add_column("识别时间", style="blue")
+    preview_table.add_column("目标路径", style="green")
+    
+    preview_count = min(10, len(all_operations))
+    for op in all_operations[:preview_count]:
+        preview_table.add_row(
+            op['filename'],
+            op['timestamp'].strftime('%Y-%m-%d'),
+            op['rel_destination']
+        )
+    
+    console.print(preview_table)
+    
+    if len(all_operations) > preview_count:
+        console.print(f"  [dim]... 还有 {len(all_operations) - preview_count} 个文件未显示[/dim]")
+
+    # 确认执行
+    if Confirm.ask("\n确认执行以上操作？", default=True):
+        logger.info("用户确认执行文件归档操作")
+        success_count = 0
+        fail_count = 0
+
+        for op in all_operations:
+            try:
+                archive_file(
+                    op['source'],
+                    op['timestamp'],
+                    op['base_dst'],
+                    format_key
+                )
+                success_count += 1
+                console.print(f"[green]✓ {op['filename']}[/green]")
+            except Exception as e:
+                fail_count += 1
+                logger.error(f"移动文件失败 {op['filename']}: {e}")
+                console.print(f"[red]✗ {op['filename']}: {e}[/red]")
+
+        console.print(f"\n[bold]完成: 成功 {success_count}, 失败 {fail_count}[/bold]")
+    else:
+        console.print("[yellow]操作已取消")
+
+
 def main():
     logger.info("开始执行时间戳文件同步与归档工具")
+    
+    # 模式选择
+    console.print("[bold]选择工作模式:[/bold]")
+    console.print("1. 文件夹模式 - 根据文件夹名识别时间戳")
+    console.print("2. 文件模式 - 根据文件名识别时间戳")
+    work_mode = IntPrompt.ask("请选择模式", choices=["1", "2"], default=1)
+    
+    if work_mode == 2:
+        file_main()
+        return
+    
+    # 以下是原有的文件夹模式逻辑
     paths = get_paths()
     if not paths:
         logger.warning("未获取到有效路径，程序退出")
