@@ -20,7 +20,7 @@ def extract_timestamp_from_name(name):
             try:
                 dt = parser.parse(matched_text)
                 # 合理性校验
-                if 2000 <= dt.year <= 2025 or 0 <= dt.year <= 25:
+                if 1900 <= dt.year <= 2100 or 0 <= dt.year <= 99:
                     if 1 <= dt.month <= 12:
                         if not hasattr(dt, 'day') or 1 <= dt.day <= 31:
                             logger.info(f"从 '{name}' 成功提取时间戳: {dt}")
