@@ -16,7 +16,7 @@ from collections import defaultdict
 from dissolvef.nested import flatten_single_subfolder
 from dissolvef.media import release_single_media_folder, is_video_file, is_archive_file as is_media_archive_file
 from dissolvef.direct import dissolve_folder
-from dissolvef.archive import release_single_archive_folder
+from dissolvef.archive import release_single_archive_folder, collect_single_archive_paths
 from dissolvef.similarity import check_similarity
 
 # 创建 Typer 应用
@@ -397,16 +397,18 @@ def run_interactive() -> None:
     table.add_row("3", "直接解散指定文件夹", "将整个文件夹的内容移动到其父文件夹")
     table.add_row("4", "全部功能（除直接解散）", "执行选项1和2的操作")
     table.add_row("5", "解散单压缩包文件夹", "解散只包含单个压缩包的文件夹")
+    table.add_row("6", "收集单压缩包路径合集", "输出可直接批量解压的压缩包路径列表")
     
     console.print(table)
     
-    choice = Prompt.ask("请选择操作", choices=["1", "2", "3", "4", "5"], default="4")
+    choice = Prompt.ask("请选择操作", choices=["1", "2", "3", "4", "5", "6"], default="4")
     
     operations = {
         "media_mode": False,
         "nested_mode": False,
         "direct_mode": False,
-        "archive_mode": False
+        "archive_mode": False,
+        "archive_list_mode": False,
     }
     
     # 设置操作标志
@@ -418,6 +420,8 @@ def run_interactive() -> None:
         operations["direct_mode"] = True
     if choice == "5":
         operations["archive_mode"] = True
+    if choice == "6":
+        operations["archive_list_mode"] = True
     
     # 选择排除关键词
     exclude_keywords = []
@@ -453,6 +457,7 @@ def run_interactive() -> None:
 
     protect_first_level = True
     similarity_threshold = 0.0
+    skip_blacklist = False
     if not operations["direct_mode"]:
         protect_first_level = Confirm.ask("是否保护输入路径下一级文件夹（不直接解散）?", default=True)
         if operations["nested_mode"] or operations["archive_mode"]:
@@ -463,6 +468,8 @@ def run_interactive() -> None:
                     similarity_threshold = max(0.0, min(1.0, float(similarity_text)))
                 except ValueError:
                     similarity_threshold = 0.6
+        if operations["archive_mode"] or operations["archive_list_mode"]:
+            skip_blacklist = Confirm.ask("是否临时跳过黑名单过滤（仅本次执行）?", default=False)
     
     # 处理每个路径
     total_dissolved_folders = 0
@@ -471,6 +478,7 @@ def run_interactive() -> None:
     total_flattened_nested = 0
     total_released_media = 0
     total_released_archive = 0
+    total_collected_archive_paths = []
     
     if operations["direct_mode"]:
         # 直接解散模式
@@ -542,11 +550,47 @@ def run_interactive() -> None:
                     exclude_keywords,
                     preview_mode,
                     similarity_threshold=similarity_threshold,
-                    protect_first_level=protect_first_level
+                    protect_first_level=protect_first_level,
+                    skip_blacklist=skip_blacklist,
                 )
                 # 兼容新返回值 (count, skipped)
                 count = result[0] if isinstance(result, tuple) else result
                 total_released_archive += count
+            if operations["archive_list_mode"]:
+                console.print("\n[bold cyan]>>> 收集单压缩包路径合集...[/bold cyan]")
+                paths_result, _, _ = collect_single_archive_paths(
+                    path,
+                    exclude_keywords,
+                    similarity_threshold=similarity_threshold,
+                    protect_first_level=protect_first_level,
+                    skip_blacklist=skip_blacklist,
+                )
+                total_collected_archive_paths.extend(paths_result)
+
+        if operations["archive_list_mode"]:
+            unique_paths = sorted({str(p) for p in total_collected_archive_paths})
+            if unique_paths:
+                path_text = "\n".join(unique_paths)
+                console.print(f"\n[bold green]已收集到 {len(unique_paths)} 个压缩包路径[/bold green]")
+                console.print("[cyan]以下路径已准备好，可直接用于批量解压：[/cyan]")
+                console.print(path_text)
+
+                if Confirm.ask("是否复制路径合集到剪贴板?", default=True):
+                    try:
+                        import pyperclip
+                        pyperclip.copy(path_text)
+                        console.print("[green]已复制到剪贴板[/green]")
+                    except Exception as e:
+                        console.print(f"[yellow]复制失败: {e}[/yellow]")
+
+                if Confirm.ask("是否保存路径合集到 txt 文件?", default=False):
+                    output_text = Prompt.ask("输出文件路径", default=str(Path.cwd() / "archive_paths.txt"))
+                    output_path = Path(output_text).expanduser()
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_path.write_text(path_text + "\n", encoding="utf-8")
+                    console.print(f"[green]已保存到文件:[/green] {output_path}")
+            else:
+                console.print("\n[yellow]没有找到符合条件的压缩包路径[/yellow]")
     
     # 输出操作总结
     console.print("\n[bold blue]解散操作总结:[/bold blue]")
@@ -563,6 +607,9 @@ def run_interactive() -> None:
             console.print(f"- {mode_prefix}解散 [green]{total_flattened_nested}[/green] 个嵌套文件夹")
         if operations["archive_mode"]:
             console.print(f"- {mode_prefix}解散 [green]{total_released_archive}[/green] 个单压缩包文件夹")
+        if operations["archive_list_mode"]:
+            unique_count = len({str(p) for p in total_collected_archive_paths})
+            console.print(f"- {mode_prefix}收集 [green]{unique_count}[/green] 个压缩包路径")
     
     if preview_mode:
         console.print("\n[yellow]注意：这是预览模式，实际操作未执行[/yellow]")
@@ -590,6 +637,10 @@ def dissolve(
     exclude: Optional[str] = typer.Option(None, help="排除关键词列表，用逗号分隔多个关键词"),
     preview: bool = typer.Option(False, "--preview", "-p", help="预览模式，不实际执行操作"),
     archive: bool = typer.Option(False, "--archive", "-z", help="解散单压缩包文件夹"),
+    archive_paths: bool = typer.Option(False, "--archive-paths", help="收集单压缩包文件夹中的压缩包路径合集"),
+    archive_paths_output: Optional[Path] = typer.Option(None, "--archive-paths-output", help="将压缩包路径合集输出到 txt 文件"),
+    archive_paths_clipboard: bool = typer.Option(False, "--archive-paths-clipboard", help="将压缩包路径合集复制到剪贴板"),
+    skip_blacklist: bool = typer.Option(False, "--skip-blacklist", help="临时跳过黑名单过滤（仅 archive/archive-paths 生效）"),
     similarity: float = typer.Option(0.6, "--similarity", "-s", min=0.0, max=1.0, help="相似度阈值（nested/archive）"),
     disable_similarity: bool = typer.Option(False, "--disable-similarity", help="关闭相似度限制"),
     protect_first_level: bool = typer.Option(True, "--protect-first-level/--no-protect-first-level", help="保护输入路径下一级文件夹")
@@ -605,9 +656,10 @@ def dissolve(
     nested_mode = nested or all
     media_mode = media or all
     archive_mode = archive or all
+    archive_paths_mode = archive_paths
     similarity_threshold = 0.0 if disable_similarity else similarity
     # 至少选择一种模式
-    if not (direct or nested_mode or media_mode or archive_mode):
+    if not (direct or nested_mode or media_mode or archive_mode or archive_paths_mode):
         typer.echo("提示：未指定任何解散操作，默认执行单媒体文件夹解散")
         media_mode = True
     
@@ -653,6 +705,7 @@ def dissolve(
     total_flattened_nested = 0
     total_released_media = 0
     total_released_archive = 0
+    total_collected_archive_paths = []
     
     if direct:
         # 直接解散模式
@@ -722,10 +775,41 @@ def dissolve(
                     exclude_keywords,
                     preview=preview,
                     similarity_threshold=similarity_threshold,
-                    protect_first_level=protect_first_level
+                    protect_first_level=protect_first_level,
+                    skip_blacklist=skip_blacklist,
                 )
                 count = result[0] if isinstance(result, tuple) else result
                 total_released_archive += count
+            if archive_paths_mode:
+                typer.echo("\n>>> 收集单压缩包路径合集...")
+                paths_result, _, _ = collect_single_archive_paths(
+                    path,
+                    exclude_keywords,
+                    similarity_threshold=similarity_threshold,
+                    protect_first_level=protect_first_level,
+                    skip_blacklist=skip_blacklist,
+                )
+                total_collected_archive_paths.extend(paths_result)
+
+        if archive_paths_mode:
+            unique_paths = sorted({str(p) for p in total_collected_archive_paths})
+            typer.echo(f"\n压缩包路径收集完成，共 {len(unique_paths)} 条")
+            if unique_paths:
+                output_text = "\n".join(unique_paths)
+                typer.echo(output_text)
+
+                if archive_paths_output:
+                    archive_paths_output.parent.mkdir(parents=True, exist_ok=True)
+                    archive_paths_output.write_text(output_text + "\n", encoding="utf-8")
+                    typer.echo(f"已写入文件: {archive_paths_output}")
+
+                if archive_paths_clipboard:
+                    try:
+                        import pyperclip
+                        pyperclip.copy(output_text)
+                        typer.echo("已复制到剪贴板")
+                    except Exception as e:
+                        typer.echo(f"复制到剪贴板失败: {e}", err=True)
     
     # 输出操作总结
     typer.echo("\n解散操作总结:")
@@ -742,6 +826,9 @@ def dissolve(
             typer.echo(f"- {mode_prefix}解散 {total_flattened_nested} 个嵌套文件夹")
         if archive_mode:
             typer.echo(f"- {mode_prefix}解散 {total_released_archive} 个单压缩包文件夹")
+        if archive_paths_mode:
+            unique_count = len({str(p) for p in total_collected_archive_paths})
+            typer.echo(f"- {mode_prefix}收集 {unique_count} 个压缩包路径")
     
     if preview:
         typer.echo("注意：这是预览模式，实际操作未执行")
