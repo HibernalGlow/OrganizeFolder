@@ -3,16 +3,21 @@ dissolve 包的命令行入口点，使用 Typer 实现命令行界面
 """
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple, Literal
+from typing import List, Optional, Tuple, Literal, Dict
 import logging
 import typer
 from enum import Enum
 from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.tree import Tree
+from collections import defaultdict
 
 from dissolvef.nested import flatten_single_subfolder
-from dissolvef.media import release_single_media_folder
+from dissolvef.media import release_single_media_folder, is_video_file, is_archive_file as is_media_archive_file
 from dissolvef.direct import dissolve_folder
 from dissolvef.archive import release_single_archive_folder
+from dissolvef.similarity import check_similarity
 
 # 创建 Typer 应用
 app = typer.Typer(help="文件夹解散工具 - 解散嵌套文件夹和释放单媒体文件夹")
@@ -93,6 +98,174 @@ class ConflictStrategy(str, Enum):
     SKIP = "skip"
     OVERWRITE = "overwrite"
     RENAME = "rename"
+
+
+def _render_preview_changes_tree(
+    base_path: Path,
+    changes: List[Dict[str, str]],
+    skipped: List[Dict[str, str]]
+) -> None:
+    """使用 Rich Tree 展示预览模式下的文件树变化。"""
+    root = Tree(f"[bold cyan]{base_path}[/bold cyan]")
+    node_map: Dict[Path, Tree] = {Path("."): root}
+
+    def ensure_node(relative_dir: Path) -> Tree:
+        if relative_dir == Path("."):
+            return root
+        curr = Path(".")
+        for part in relative_dir.parts:
+            nxt = curr / part
+            if nxt not in node_map:
+                node_map[nxt] = node_map[curr].add(f"[white]{part}[/white]")
+            curr = nxt
+        return node_map[curr]
+
+    def rel_dir_of(folder: Path) -> Path:
+        try:
+            rel = folder.relative_to(base_path)
+            return Path(".") if str(rel) == "." else rel
+        except Exception:
+            return Path(".")
+
+    mode_color = {
+        "media": "green",
+        "nested": "blue",
+        "archive": "magenta",
+        "direct": "yellow",
+    }
+
+    for item in sorted(changes, key=lambda x: (len(rel_dir_of(Path(x["folder"])).parts), x["folder"], x["mode"])):
+        folder = Path(item["folder"])
+        mode = item["mode"]
+        detail = item["detail"]
+        node = ensure_node(rel_dir_of(folder))
+        color = mode_color.get(mode, "green")
+        node.add(f"[{color}]({mode})[/] {detail}")
+
+    for item in sorted(skipped, key=lambda x: (x["folder"], x["reason"])):
+        folder = Path(item["folder"])
+        node = ensure_node(rel_dir_of(folder))
+        node.add(f"[dim](-) 跳过: {item['reason']}[/dim]")
+
+    summary = Table(show_header=True, header_style="bold cyan")
+    summary.add_column("类型", style="cyan")
+    summary.add_column("数量", justify="right")
+    counts = defaultdict(int)
+    for c in changes:
+        counts[c["mode"]] += 1
+    summary.add_row("media", str(counts["media"]))
+    summary.add_row("nested", str(counts["nested"]))
+    summary.add_row("archive", str(counts["archive"]))
+    summary.add_row("direct", str(counts["direct"]))
+    summary.add_row("skip", str(len(skipped)))
+
+    console.print(Panel(root, title="预览变更树", border_style="cyan"))
+    console.print(summary)
+
+
+def show_preview_tree_changes(
+    base_path: Path,
+    *,
+    direct_mode: bool,
+    media_mode: bool,
+    nested_mode: bool,
+    archive_mode: bool,
+    exclude_keywords: List[str],
+    similarity_threshold: float,
+    protect_first_level: bool,
+) -> None:
+    """根据当前参数模拟将发生的变更，并输出 Rich 文件树。"""
+    changes: List[Dict[str, str]] = []
+    skipped: List[Dict[str, str]] = []
+
+    if direct_mode:
+        parent_dir = base_path.parent
+        for item in sorted(base_path.iterdir(), key=lambda x: x.name.lower()):
+            target = parent_dir / item.name
+            changes.append({
+                "mode": "direct",
+                "folder": str(base_path),
+                "detail": f"{item.name} -> {target}",
+            })
+        _render_preview_changes_tree(base_path, changes, skipped)
+        return
+
+    for root, dirs, files in os.walk(base_path, topdown=False):
+        root_path = Path(root)
+
+        if any(keyword in str(root_path) for keyword in exclude_keywords):
+            skipped.append({"folder": str(root_path), "reason": "命中排除关键词"})
+            continue
+
+        if protect_first_level and root_path != base_path and root_path.parent == base_path:
+            skipped.append({"folder": str(root_path), "reason": "一级目录保护"})
+            continue
+
+        try:
+            items = list(root_path.iterdir())
+        except Exception:
+            continue
+
+        fs_files = [i for i in items if i.is_file()]
+        fs_dirs = [i for i in items if i.is_dir()]
+
+        if media_mode:
+            media_files = [f for f in fs_files if is_video_file(f.name) or is_media_archive_file(f.name)]
+            if len(media_files) == 1 and len(fs_files) == 1 and len(fs_dirs) == 0:
+                media_file = media_files[0]
+                changes.append({
+                    "mode": "media",
+                    "folder": str(root_path),
+                    "detail": f"{media_file.name} -> {root_path.parent / media_file.name}",
+                })
+
+        if nested_mode and len(dirs) == 1 and not files:
+            subfolder_name = dirs[0]
+            if similarity_threshold > 0:
+                passed, sim = check_similarity(root_path.name, subfolder_name, similarity_threshold)
+                if not passed:
+                    skipped.append({
+                        "folder": str(root_path),
+                        "reason": f"相似度不足({sim:.0%}<{similarity_threshold:.0%})",
+                    })
+                else:
+                    changes.append({
+                        "mode": "nested",
+                        "folder": str(root_path),
+                        "detail": f"解散单子目录: {subfolder_name}",
+                    })
+            else:
+                changes.append({
+                    "mode": "nested",
+                    "folder": str(root_path),
+                    "detail": f"解散单子目录: {subfolder_name}",
+                })
+
+        if archive_mode:
+            archive_files = [f for f in fs_files if f.suffix.lower() in {'.zip', '.rar', '.7z', '.cbz', '.cbr'}]
+            if len(archive_files) == 1 and len(fs_files) == 1 and len(fs_dirs) == 0:
+                archive_file = archive_files[0]
+                if similarity_threshold > 0:
+                    passed, sim = check_similarity(root_path.name, archive_file.stem, similarity_threshold)
+                    if not passed:
+                        skipped.append({
+                            "folder": str(root_path),
+                            "reason": f"相似度不足({sim:.0%}<{similarity_threshold:.0%})",
+                        })
+                    else:
+                        changes.append({
+                            "mode": "archive",
+                            "folder": str(root_path),
+                            "detail": f"{archive_file.name} -> {root_path.parent / archive_file.name}",
+                        })
+                else:
+                    changes.append({
+                        "mode": "archive",
+                        "folder": str(root_path),
+                        "detail": f"{archive_file.name} -> {root_path.parent / archive_file.name}",
+                    })
+
+    _render_preview_changes_tree(base_path, changes, skipped)
 
 def get_paths_from_clipboard() -> List[Path]:
     """从剪贴板读取多行路径"""
@@ -304,6 +477,17 @@ def run_interactive() -> None:
         console.print("\n[bold cyan]>>> 执行直接解散文件夹操作...[/bold cyan]")
         for path in paths:
             console.print(Rule(f"处理目录: {path}"))
+            if preview_mode:
+                show_preview_tree_changes(
+                    path,
+                    direct_mode=True,
+                    media_mode=False,
+                    nested_mode=False,
+                    archive_mode=False,
+                    exclude_keywords=exclude_keywords,
+                    similarity_threshold=similarity_threshold,
+                    protect_first_level=protect_first_level,
+                )
             success, files_count, dirs_count = dissolve_folder(
                 path, 
                 file_conflict=file_conflict,
@@ -319,6 +503,17 @@ def run_interactive() -> None:
         # 其他解散模式
         for path in paths:
             console.print(Rule(f"处理目录: {path}"))
+            if preview_mode:
+                show_preview_tree_changes(
+                    path,
+                    direct_mode=False,
+                    media_mode=operations["media_mode"],
+                    nested_mode=operations["nested_mode"],
+                    archive_mode=operations["archive_mode"],
+                    exclude_keywords=exclude_keywords,
+                    similarity_threshold=similarity_threshold,
+                    protect_first_level=protect_first_level,
+                )
             if operations["media_mode"]:
                 console.print("\n[bold cyan]>>> 解散单媒体文件夹...[/bold cyan]")
                 count = release_single_media_folder(
@@ -464,6 +659,17 @@ def dissolve(
         typer.echo("\n>>> 执行直接解散文件夹操作...")
         for path in path_list:
             typer.echo(f"\n处理目录: {path}")
+            if preview:
+                show_preview_tree_changes(
+                    path,
+                    direct_mode=True,
+                    media_mode=False,
+                    nested_mode=False,
+                    archive_mode=False,
+                    exclude_keywords=exclude_keywords,
+                    similarity_threshold=similarity_threshold,
+                    protect_first_level=protect_first_level,
+                )
             success, files_count, dirs_count = dissolve_folder(
                 path, 
                 file_conflict=str(file_conflict),
@@ -478,6 +684,17 @@ def dissolve(
         # 其他解散模式
         for path in path_list:
             typer.echo(f"\n处理目录: {path}")
+            if preview:
+                show_preview_tree_changes(
+                    path,
+                    direct_mode=False,
+                    media_mode=media_mode,
+                    nested_mode=nested_mode,
+                    archive_mode=archive_mode,
+                    exclude_keywords=exclude_keywords,
+                    similarity_threshold=similarity_threshold,
+                    protect_first_level=protect_first_level,
+                )
             if media_mode:
                 typer.echo("\n>>> 解散单媒体文件夹...")
                 count = release_single_media_folder(
