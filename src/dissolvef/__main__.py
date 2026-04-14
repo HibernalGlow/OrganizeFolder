@@ -277,6 +277,19 @@ def run_interactive() -> None:
     
     # 询问是否预览
     preview_mode = Confirm.ask("是否启用预览模式(不实际执行操作)?", default=False)
+
+    protect_first_level = True
+    similarity_threshold = 0.0
+    if not operations["direct_mode"]:
+        protect_first_level = Confirm.ask("是否保护输入路径下一级文件夹（不直接解散）?", default=True)
+        if operations["nested_mode"] or operations["archive_mode"]:
+            enable_similarity = Confirm.ask("是否启用相似度限制（nested/archive）?", default=True)
+            if enable_similarity:
+                similarity_text = Prompt.ask("相似度阈值 (0.0-1.0)", default="0.6")
+                try:
+                    similarity_threshold = max(0.0, min(1.0, float(similarity_text)))
+                except ValueError:
+                    similarity_threshold = 0.6
     
     # 处理每个路径
     total_dissolved_folders = 0
@@ -308,17 +321,34 @@ def run_interactive() -> None:
             console.print(Rule(f"处理目录: {path}"))
             if operations["media_mode"]:
                 console.print("\n[bold cyan]>>> 解散单媒体文件夹...[/bold cyan]")
-                count = release_single_media_folder(path, exclude_keywords, preview_mode)
+                count = release_single_media_folder(
+                    path,
+                    exclude_keywords,
+                    preview_mode,
+                    protect_first_level=protect_first_level
+                )
                 total_released_media += count
             if operations["nested_mode"]:
                 console.print("\n[bold cyan]>>> 解散嵌套的单一文件夹...[/bold cyan]")
-                result = flatten_single_subfolder(path, exclude_keywords)
+                result = flatten_single_subfolder(
+                    path,
+                    exclude_keywords,
+                    preview=preview_mode,
+                    similarity_threshold=similarity_threshold,
+                    protect_first_level=protect_first_level
+                )
                 # 兼容新返回值 (count, skipped)
                 count = result[0] if isinstance(result, tuple) else result
                 total_flattened_nested += count
             if operations["archive_mode"]:
                 console.print("\n[bold cyan]>>> 解散单压缩包文件夹...[/bold cyan]")
-                result = release_single_archive_folder(path, exclude_keywords, preview_mode)
+                result = release_single_archive_folder(
+                    path,
+                    exclude_keywords,
+                    preview_mode,
+                    similarity_threshold=similarity_threshold,
+                    protect_first_level=protect_first_level
+                )
                 # 兼容新返回值 (count, skipped)
                 count = result[0] if isinstance(result, tuple) else result
                 total_released_archive += count
@@ -364,7 +394,10 @@ def dissolve(
     ),
     exclude: Optional[str] = typer.Option(None, help="排除关键词列表，用逗号分隔多个关键词"),
     preview: bool = typer.Option(False, "--preview", "-p", help="预览模式，不实际执行操作"),
-    archive: bool = typer.Option(False, "--archive", "-z", help="解散单压缩包文件夹")
+    archive: bool = typer.Option(False, "--archive", "-z", help="解散单压缩包文件夹"),
+    similarity: float = typer.Option(0.6, "--similarity", "-s", min=0.0, max=1.0, help="相似度阈值（nested/archive）"),
+    disable_similarity: bool = typer.Option(False, "--disable-similarity", help="关闭相似度限制"),
+    protect_first_level: bool = typer.Option(True, "--protect-first-level/--no-protect-first-level", help="保护输入路径下一级文件夹")
 ):
     """解散文件夹：解散嵌套文件夹、单媒体文件夹或直接解散文件夹"""
     # 如果使用交互式界面，或者不带任何参数
@@ -377,6 +410,7 @@ def dissolve(
     nested_mode = nested or all
     media_mode = media or all
     archive_mode = archive or all
+    similarity_threshold = 0.0 if disable_similarity else similarity
     # 至少选择一种模式
     if not (direct or nested_mode or media_mode or archive_mode):
         typer.echo("提示：未指定任何解散操作，默认执行单媒体文件夹解散")
@@ -446,16 +480,33 @@ def dissolve(
             typer.echo(f"\n处理目录: {path}")
             if media_mode:
                 typer.echo("\n>>> 解散单媒体文件夹...")
-                count = release_single_media_folder(path, exclude_keywords, preview)
+                count = release_single_media_folder(
+                    path,
+                    exclude_keywords,
+                    preview,
+                    protect_first_level=protect_first_level
+                )
                 total_released_media += count
             if nested_mode:
                 typer.echo("\n>>> 解散嵌套的单一文件夹...")
-                result = flatten_single_subfolder(path, exclude_keywords)
+                result = flatten_single_subfolder(
+                    path,
+                    exclude_keywords,
+                    preview=preview,
+                    similarity_threshold=similarity_threshold,
+                    protect_first_level=protect_first_level
+                )
                 count = result[0] if isinstance(result, tuple) else result
                 total_flattened_nested += count
             if archive_mode:
                 typer.echo("\n>>> 解散单压缩包文件夹...")
-                result = release_single_archive_folder(path, exclude_keywords, preview)
+                result = release_single_archive_folder(
+                    path,
+                    exclude_keywords,
+                    preview=preview,
+                    similarity_threshold=similarity_threshold,
+                    protect_first_level=protect_first_level
+                )
                 count = result[0] if isinstance(result, tuple) else result
                 total_released_archive += count
     

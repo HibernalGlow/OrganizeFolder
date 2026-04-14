@@ -34,6 +34,7 @@ def release_single_archive_folder(
     exclude_keywords: Optional[List[str]] = None,
     preview: bool = False,
     similarity_threshold: float = 0.0,
+    protect_first_level: bool = True,
     enable_undo: bool = True
 ) -> Tuple[int, int]:
     """
@@ -44,6 +45,7 @@ def release_single_archive_folder(
         exclude_keywords (list): 排除关键词列表
         preview (bool): 如果为 True，只预览操作不实际执行
         similarity_threshold (float): 相似度阈值 (0.0-1.0)，0 表示不检测
+        protect_first_level (bool): 是否保护输入路径下一级文件夹
         enable_undo (bool): 是否启用撤销记录
     
     返回:
@@ -100,6 +102,9 @@ def release_single_archive_folder(
         
         # 处理有效的文件夹
         for root_path in valid_folders:
+            if protect_first_level and root_path != path and root_path.parent == path:
+                continue
+
             if status_started:
                 status.update(f"检查文件夹: {root_path.name}")
             

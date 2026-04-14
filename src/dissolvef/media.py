@@ -27,7 +27,7 @@ def is_archive_file(filename):
     """判断文件是否为压缩包文件"""
     return any(str(filename).lower().endswith(ext) for ext in ARCHIVE_FORMATS)
 
-def release_single_media_folder(path, exclude_keywords=None, preview=False):
+def release_single_media_folder(path, exclude_keywords=None, preview=False, protect_first_level=True):
     """
     如果文件夹中只有一个视频文件或压缩包文件，将其释放到上层目录
 
@@ -35,6 +35,7 @@ def release_single_media_folder(path, exclude_keywords=None, preview=False):
     path (str/Path): 目标路径
     exclude_keywords (list): 排除关键词列表
     preview (bool): 如果为True，只预览操作不实际执行
+    protect_first_level (bool): 是否保护输入路径下一级文件夹
     
     返回:
     int: 处理的文件夹数量
@@ -71,6 +72,11 @@ def release_single_media_folder(path, exclude_keywords=None, preview=False):
         
         for root, dirs, files in os.walk(path, topdown=False):
             root_path = Path(root)
+
+            # 保护输入路径下一级目录：不直接解散这些目录
+            if protect_first_level and root_path != path and root_path.parent == path:
+                continue
+
               # 检查当前路径是否包含排除关键词
             if any(keyword in str(root_path) for keyword in exclude_keywords):
                 logger.info(f"跳过含有排除关键词的文件夹: {root}")
