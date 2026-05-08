@@ -1,7 +1,7 @@
 """
 单媒体文件夹解散模块
 
-提供释放单个媒体文件夹的功能，将文件夹中唯一的媒体文件（视频或压缩包）移动到上级目录
+提供释放单个媒体文件夹的功能，将文件夹中唯一的媒体文件（视频、压缩包或图片）移动到上级目录
 """
 
 import os
@@ -14,10 +14,13 @@ from loguru import logger
 console = Console()
 
 # 支持的视频格式
-VIDEO_FORMATS = {'.mp4','.nov', '.avi', '.mkv', '.wmv', '.flv', '.webm', '.mov', '.m4v', '.mpg', '.mpeg', '.3gp', '.rmvb'}
+VIDEO_FORMATS = {'.mp4', '.nov', '.avi', '.mkv', '.wmv', '.flv', '.webm', '.mov', '.m4v', '.mpg', '.mpeg', '.3gp', '.rmvb'}
 
 # 支持的压缩包格式
 ARCHIVE_FORMATS = {'.zip', '.rar', '.7z', '.cbz', '.cbr'}
+
+# 支持的图片格式
+IMAGE_FORMATS = {'.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif', '.bmp', '.tif', '.tiff'}
 
 def is_video_file(filename):
     """判断文件是否为视频文件"""
@@ -27,7 +30,17 @@ def is_archive_file(filename):
     """判断文件是否为压缩包文件"""
     return any(str(filename).lower().endswith(ext) for ext in ARCHIVE_FORMATS)
 
-def release_single_media_folder(path, exclude_keywords=None, preview=False, protect_first_level=True):
+def is_image_file(filename):
+    """判断文件是否为图片文件"""
+    return any(str(filename).lower().endswith(ext) for ext in IMAGE_FORMATS)
+
+def release_single_media_folder(
+    path,
+    exclude_keywords=None,
+    preview=False,
+    protect_first_level=True,
+    media_types=None,
+):
     """
     如果文件夹中只有一个视频文件或压缩包文件，将其释放到上层目录
 
@@ -43,6 +56,10 @@ def release_single_media_folder(path, exclude_keywords=None, preview=False, prot
     # 初始化参数
     if exclude_keywords is None:
         exclude_keywords = []
+    if media_types is None:
+        media_types = {"video", "archive", "image"}
+    else:
+        media_types = {m.lower() for m in media_types if m}
         
     # 转换路径为Path对象
     if isinstance(path, str):
@@ -90,7 +107,8 @@ def release_single_media_folder(path, exclude_keywords=None, preview=False, prot
                 # 获取文件夹中的所有项目
                 items = list(root_path.iterdir())
                 
-                # 分别统计文件和文件夹                files = [item for item in items if item.is_file()]
+                # 分别统计文件和文件夹
+                files = [item for item in items if item.is_file()]
                 dirs = [item for item in items if item.is_dir()]
                 
                 # logger.info(f"- 包含 {len(dirs)} 个子文件夹")
@@ -103,7 +121,14 @@ def release_single_media_folder(path, exclude_keywords=None, preview=False, prot
                     try:
                         if isinstance(f, str):
                             f = Path(f)
-                        if is_video_file(f.name) or is_archive_file(f.name):
+                        is_video = is_video_file(f.name)
+                        is_archive = is_archive_file(f.name)
+                        is_image = is_image_file(f.name)
+                        if (
+                            (is_video and "video" in media_types)
+                            or (is_archive and "archive" in media_types)
+                            or (is_image and "image" in media_types)
+                        ):
                             media_files.append(f)
                     except Exception as e:
                         logger.warning(f"处理文件时出错: {f}, 错误: {str(e)}")
@@ -112,7 +137,12 @@ def release_single_media_folder(path, exclude_keywords=None, preview=False, prot
                 # 如果文件夹中只有一个媒体文件且没有其他文件和文件夹
                 if len(media_files) == 1 and len(files) == 1 and len(dirs) == 0:
                     media_file = media_files[0]
-                    media_type = "视频" if is_video_file(media_file.name) else "压缩包"
+                    if is_video_file(media_file.name):
+                        media_type = "视频"
+                    elif is_archive_file(media_file.name):
+                        media_type = "压缩包"
+                    else:
+                        media_type = "图片"
                     
                     console.print(f"\n找到符合条件的文件夹: [cyan]{root}[/cyan]")
                     console.print(f"- 单个{media_type}文件: [green]{media_file.name}[/green]")

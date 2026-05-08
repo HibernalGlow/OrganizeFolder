@@ -14,7 +14,12 @@ from rich.tree import Tree
 from collections import defaultdict
 
 from dissolvef.nested import flatten_single_subfolder
-from dissolvef.media import release_single_media_folder, is_video_file, is_archive_file as is_media_archive_file
+from dissolvef.media import (
+    release_single_media_folder,
+    is_video_file,
+    is_archive_file as is_media_archive_file,
+    is_image_file,
+)
 from dissolvef.direct import dissolve_folder
 from dissolvef.archive import release_single_archive_folder, collect_single_archive_paths
 from dissolvef.similarity import check_similarity
@@ -100,6 +105,27 @@ class ConflictStrategy(str, Enum):
     RENAME = "rename"
 
 
+def _parse_media_types(raw_value: Optional[str]) -> List[str]:
+    """Parse media type input like "1 2 3" or "video,archive"."""
+    if not raw_value:
+        return []
+    mapping = {
+        "1": "video",
+        "2": "archive",
+        "3": "image",
+        "video": "video",
+        "archive": "archive",
+        "image": "image",
+    }
+    tokens = [t.strip().lower() for t in raw_value.replace(",", " ").split() if t.strip()]
+    result = []
+    for token in tokens:
+        mapped = mapping.get(token)
+        if mapped and mapped not in result:
+            result.append(mapped)
+    return result
+
+
 def _render_preview_changes_tree(
     base_path: Path,
     changes: List[Dict[str, str]],
@@ -173,6 +199,7 @@ def show_preview_tree_changes(
     exclude_keywords: List[str],
     similarity_threshold: float,
     protect_first_level: bool,
+    media_types: Optional[List[str]] = None,
 ) -> None:
     """根据当前参数模拟将发生的变更，并输出 Rich 文件树。"""
     changes: List[Dict[str, str]] = []
@@ -210,7 +237,15 @@ def show_preview_tree_changes(
         fs_dirs = [i for i in items if i.is_dir()]
 
         if media_mode:
-            media_files = [f for f in fs_files if is_video_file(f.name) or is_media_archive_file(f.name)]
+            active_media_types = set(media_types or ["video", "archive", "image"])
+            media_files = [
+                f for f in fs_files
+                if (
+                    ("video" in active_media_types and is_video_file(f.name))
+                    or ("archive" in active_media_types and is_media_archive_file(f.name))
+                    or ("image" in active_media_types and is_image_file(f.name))
+                )
+            ]
             if len(media_files) == 1 and len(fs_files) == 1 and len(fs_dirs) == 0:
                 media_file = media_files[0]
                 changes.append({
@@ -430,6 +465,19 @@ def run_interactive() -> None:
         keywords = input().strip()
         if keywords:
             exclude_keywords.extend([kw.strip() for kw in keywords.split(",")])
+
+    media_types: List[str] = []
+    if operations["media_mode"]:
+        console.print("\n[bold blue]== 选择单媒体类别 ==[/bold blue]")
+        console.print("1. 视频")
+        console.print("2. 压缩包")
+        console.print("3. 图片")
+        while True:
+            raw_media_types = Prompt.ask("请选择(可多选，例 1 2 3)", default="1 2")
+            media_types = _parse_media_types(raw_media_types)
+            if media_types:
+                break
+            console.print("[yellow]至少选择一个媒体类别[/yellow]")
     
     # 如果选择直接解散，设置冲突处理方式
     file_conflict = dir_conflict = 'auto'
@@ -495,6 +543,7 @@ def run_interactive() -> None:
                     exclude_keywords=exclude_keywords,
                     similarity_threshold=similarity_threshold,
                     protect_first_level=protect_first_level,
+                    media_types=None,
                 )
             success, files_count, dirs_count = dissolve_folder(
                 path, 
@@ -521,6 +570,7 @@ def run_interactive() -> None:
                     exclude_keywords=exclude_keywords,
                     similarity_threshold=similarity_threshold,
                     protect_first_level=protect_first_level,
+                    media_types=media_types,
                 )
             if operations["media_mode"]:
                 console.print("\n[bold cyan]>>> 解散单媒体文件夹...[/bold cyan]")
@@ -528,7 +578,8 @@ def run_interactive() -> None:
                     path,
                     exclude_keywords,
                     preview_mode,
-                    protect_first_level=protect_first_level
+                    protect_first_level=protect_first_level,
+                    media_types=media_types,
                 )
                 total_released_media += count
             if operations["nested_mode"]:
@@ -641,6 +692,7 @@ def dissolve(
     archive_paths_output: Optional[Path] = typer.Option(None, "--archive-paths-output", help="将压缩包路径合集输出到 txt 文件"),
     archive_paths_clipboard: bool = typer.Option(False, "--archive-paths-clipboard", help="将压缩包路径合集复制到剪贴板"),
     skip_blacklist: bool = typer.Option(False, "--skip-blacklist", help="临时跳过黑名单过滤（仅 archive/archive-paths 生效）"),
+    media_types: Optional[str] = typer.Option(None, "--media-types", help="媒体类别(可多选): video,archive,image"),
     similarity: float = typer.Option(0.6, "--similarity", "-s", min=0.0, max=1.0, help="相似度阈值（nested/archive）"),
     disable_similarity: bool = typer.Option(False, "--disable-similarity", help="关闭相似度限制"),
     protect_first_level: bool = typer.Option(True, "--protect-first-level/--no-protect-first-level", help="保护输入路径下一级文件夹")
@@ -658,6 +710,9 @@ def dissolve(
     archive_mode = archive or all
     archive_paths_mode = archive_paths
     similarity_threshold = 0.0 if disable_similarity else similarity
+    media_types_list = _parse_media_types(media_types) if media_mode else []
+    if media_mode and not media_types_list:
+        media_types_list = ["video", "archive", "image"]
     # 至少选择一种模式
     if not (direct or nested_mode or media_mode or archive_mode or archive_paths_mode):
         typer.echo("提示：未指定任何解散操作，默认执行单媒体文件夹解散")
@@ -722,6 +777,7 @@ def dissolve(
                     exclude_keywords=exclude_keywords,
                     similarity_threshold=similarity_threshold,
                     protect_first_level=protect_first_level,
+                    media_types=None,
                 )
             success, files_count, dirs_count = dissolve_folder(
                 path, 
@@ -747,6 +803,7 @@ def dissolve(
                     exclude_keywords=exclude_keywords,
                     similarity_threshold=similarity_threshold,
                     protect_first_level=protect_first_level,
+                    media_types=media_types_list,
                 )
             if media_mode:
                 typer.echo("\n>>> 解散单媒体文件夹...")
@@ -754,7 +811,8 @@ def dissolve(
                     path,
                     exclude_keywords,
                     preview,
-                    protect_first_level=protect_first_level
+                    protect_first_level=protect_first_level,
+                    media_types=media_types_list,
                 )
                 total_released_media += count
             if nested_mode:
