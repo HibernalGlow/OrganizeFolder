@@ -6,6 +6,7 @@ import typer
 from rich.console import Console
 from rich.prompt import Prompt
 from loguru import logger
+import pyperclip
 
 app = typer.Typer(help="快速分类工具 - 通过关键词递归分类文件夹")
 console = Console()
@@ -173,83 +174,76 @@ def _migrate_items(
             logger.error(f"Failed to {action} {src_path} to {dest}: {e}")
 
 
-def get_source_paths_interactively() -> List[str]:
-    """Interactively get source directory path."""
-    paths = []
-    console.print("[bold cyan]请输入要分类的目录路径[/bold cyan]")
-    
-    while True:
-        path_str = Prompt.ask("路径", default="")
-        if not path_str:
-            break
-        
-        path = Path(path_str)
-        if path.is_dir():
-            paths.append(str(path))
-            break
-        else:
-            console.print(f"[red]目录不存在: {path_str}[/red]")
-    
-    return paths
-
-
 @app.command()
 def classify(
     path: Optional[Path] = typer.Argument(None, help="要分类的目录路径"),
-    keyword: str = typer.Option("", "--keyword", "-k", help="关键词(如already)"),
-    wait_keyword: str = typer.Option("", "--wait", "-w", help="wait文件夹名称"),
-    action: str = typer.Option("", "--action", "-a", help="操作类型: move/copy"),
-    existing_dir: str = typer.Option("", "--existing-dir", "-e", help="目录已存在时的处理方式: merge/skip"),
+    clipboard: bool = typer.Option(False, "--clipboard", "-c", help="从剪贴板读取目录路径"),
+    keyword: str = typer.Option("already", "--keyword", "-k", help="关键词(如already)"),
+    wait_keyword: str = typer.Option("wait", "--wait", "-w", help="wait文件夹名称"),
+    action: str = typer.Option("move", "--action", "-a", help="操作类型: move/copy"),
+    existing_dir: str = typer.Option("merge", "--existing-dir", "-e", help="目录已存在时的处理方式: merge/skip"),
 ):
     """快速分类: 递归查找包含关键词的文件夹，将同级其他文件夹移动到wait目录"""
     setup_logger()
     
-    interactive_mode = not path or not keyword or not wait_keyword or not action
+    target_path: Optional[Path] = None
     
-    if interactive_mode:
+    if path:
+        target_path = path
+    elif clipboard:
+        try:
+            raw = pyperclip.paste()
+            if raw:
+                for line in raw.splitlines():
+                    cand = line.strip().strip('"').strip("'")
+                    if cand:
+                        p = Path(cand)
+                        if p.is_dir():
+                            target_path = p
+                            logger.info(f"从剪贴板读取目录: {target_path}")
+                            break
+        except Exception as e:
+            logger.error(f"从剪贴板读取失败: {e}")
+    
+    if not target_path:
         console.print("[bold cyan]═══════════════════════════════════════[/bold cyan]")
         console.print("[bold cyan]       快速分类工具 - 引导模式       [/bold cyan]")
         console.print("[bold cyan]═══════════════════════════════════════[/bold cyan]")
         
-        if not path:
-            while True:
-                path_str = Prompt.ask("[bold cyan]请输入要分类的目录路径[/bold cyan]")
-                if path_str:
-                    path = Path(path_str)
-                    if path.is_dir():
-                        break
-                    console.print(f"[red]目录不存在: {path_str}[/red]")
-                else:
-                    console.print("[red]请输入有效路径[/red]")
+        while True:
+            path_str = Prompt.ask("[bold cyan]请输入要分类的目录路径[/bold cyan]")
+            if path_str:
+                target_path = Path(path_str)
+                if target_path.is_dir():
+                    break
+                console.print(f"[red]目录不存在: {path_str}[/red]")
+            else:
+                console.print("[red]请输入有效路径[/red]")
         
-        if not keyword:
-            keyword = Prompt.ask(
-                "[bold cyan]请输入关键词[/bold cyan] (用于查找目标文件夹)",
-                default="already"
-            )
+        keyword = Prompt.ask(
+            "[bold cyan]请输入关键词[/bold cyan] (用于查找目标文件夹)",
+            default=keyword
+        )
         
-        if not wait_keyword:
-            wait_keyword = Prompt.ask(
-                "[bold cyan]请输入wait文件夹名称[/bold cyan] (其他文件夹移动到此目录)",
-                default="wait"
-            )
+        wait_keyword = Prompt.ask(
+            "[bold cyan]请输入wait文件夹名称[/bold cyan] (其他文件夹移动到此目录)",
+            default=wait_keyword
+        )
         
-        if not action:
-            action = Prompt.ask(
-                "[bold cyan]请选择操作类型[/bold cyan]",
-                choices=["move", "copy"],
-                default="move"
-            ).lower()
+        action = Prompt.ask(
+            "[bold cyan]请选择操作类型[/bold cyan]",
+            choices=["move", "copy"],
+            default=action
+        ).lower()
         
-        if not existing_dir:
-            existing_dir = Prompt.ask(
-                "[bold cyan]目录已存在时的处理方式[/bold cyan]",
-                choices=["merge", "skip"],
-                default="merge"
-            ).lower()
+        existing_dir = Prompt.ask(
+            "[bold cyan]目录已存在时的处理方式[/bold cyan]",
+            choices=["merge", "skip"],
+            default=existing_dir
+        ).lower()
     
-    if not path or not path.is_dir():
-        console.print(f"[red]目录不存在: {path}[/red]")
+    if not target_path or not target_path.is_dir():
+        console.print(f"[red]目录不存在: {target_path}[/red]")
         raise typer.Exit(code=1)
     
     if action not in {"move", "copy"}:
@@ -259,14 +253,14 @@ def classify(
         existing_dir = "merge"
     
     console.print(f"\n[bold]开始快速分类[/bold]")
-    console.print(f"  目录: {path}")
+    console.print(f"  目录: {target_path}")
     console.print(f"  关键词: {keyword}")
     console.print(f"  wait文件夹: {wait_keyword}")
     console.print(f"  操作: {action}")
     console.print(f"  已存在处理: {existing_dir}")
     
     already_count, wait_count = _quick_classify_by_keyword(
-        path,
+        target_path,
         keyword,
         wait_keyword=wait_keyword,
         action=action,
