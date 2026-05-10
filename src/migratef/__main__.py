@@ -83,7 +83,6 @@ def setup_logger(app_name="app", project_root=None, console_output=True):
 
 logger, config_info = setup_logger(app_name="migratef", console_output=True)
 
-# 创建 Typer 应用
 app = typer.Typer(help="文件迁移工具 - 保持目录结构迁移文件和文件夹")
 
 # 初始化 Rich Console，用于用户交互
@@ -121,7 +120,7 @@ def get_source_paths_interactively() -> list[str]:
     return get_paths() or []
 
 
-def migrate_paths_directly(source_paths: list[str], target_root_dir: str, action: str = 'copy'):
+def migrate_paths_directly(source_paths: list[str], target_root_dir: str, action: str = 'copy', existing_dir_behavior: str = 'merge'):
     """
     直接迁移文件和文件夹到目标目录（类似 mv 命令）
     
@@ -129,6 +128,7 @@ def migrate_paths_directly(source_paths: list[str], target_root_dir: str, action
         source_paths: 源文件和文件夹路径列表
         target_root_dir: 目标根目录
         action: 操作类型，'copy' 或 'move'
+        existing_dir_behavior: 目录已存在时的处理方式，'merge' 或 'skip'
     """
     if not source_paths:
         logger.warning("没有需要迁移的文件或文件夹")
@@ -144,8 +144,6 @@ def migrate_paths_directly(source_paths: list[str], target_root_dir: str, action
         return
 
     counters = {'migrated': 0, 'error': 0, 'skipped': 0}
-    
-    # existing_dir_behavior 将在外层通过全局变量注入（由 migrate 调用前设置）
 
     def merge_directories(src: Path, dst: Path, action: str):
         """将 src 目录内容合并到 dst (dst 已存在)，文件冲突时覆盖，目录递归合并。
@@ -222,9 +220,7 @@ def migrate_paths_directly(source_paths: list[str], target_root_dir: str, action
                 
                 # 处理目录已存在但需要合并的情况
                 if target_path.exists() and source_path.is_dir() and target_path.is_dir():
-                    # 读取行为：从环境变量或外部闭包变量 existing_dir_behavior
-                    behavior = existing_dir_behavior  # noqa: F821 - 由外层闭包提供
-                    if behavior == 'merge':
+                    if existing_dir_behavior == 'merge':
                         merge_directories(source_path, target_path, action)
                         counters['migrated'] += 1
                         progress.update(task_id, advance=1, description=f"[cyan]合并目录:[/cyan] [dim]{item_name}[/dim]")
@@ -623,10 +619,9 @@ def migrate(
 
         action = "copy" if copy else "move"
 
-        global existing_dir_behavior
-        existing_dir_behavior = existing_dir if existing_dir in {"merge", "skip"} else "merge"
+        behavior = existing_dir if existing_dir in {"merge", "skip"} else "merge"
 
-        migrate_paths_directly(source_paths, str(already_dir), action=action)
+        migrate_paths_directly(source_paths, str(already_dir), action=action, existing_dir_behavior=behavior)
 
         if classify == "auto":
             wait_dir = base_dir / "wait"
@@ -634,7 +629,7 @@ def migrate(
                 base_dir, source_paths, already_dir, wait_dir
             )
             if wait_candidates:
-                migrate_paths_directly(wait_candidates, str(wait_dir), action=action)
+                migrate_paths_directly(wait_candidates, str(wait_dir), action=action, existing_dir_behavior=behavior)
         return
 
     # 确保有目标目录
@@ -657,10 +652,8 @@ def migrate(
     
     # 根据模式执行迁移
     if direct:
-        # 直接迁移模式
-        global existing_dir_behavior
-        existing_dir_behavior = existing_dir if existing_dir in {"merge", "skip"} else "merge"
-        migrate_paths_directly(source_paths, str(target), action=action)
+        behavior = existing_dir if existing_dir in {"merge", "skip"} else "merge"
+        migrate_paths_directly(source_paths, str(target), action=action, existing_dir_behavior=behavior)
     else:
         # 文件级迁移模式
         preserve_structure = not flat  # flat为True时，preserve_structure为False
