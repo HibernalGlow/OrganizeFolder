@@ -115,6 +115,91 @@ def _collect_wait_candidates(
         candidates.append(str(item))
     return candidates
 
+
+def _quick_classify_by_keyword(
+    base_dir: Path,
+    keyword: str,
+    wait_keyword: str = "wait",
+    action: str = "move",
+    existing_dir_behavior: str = "merge",
+    recursive: bool = True,
+) -> Tuple[int, int]:
+    """
+    Quick classify: find folders containing keyword, move siblings to wait folder.
+    
+    Args:
+        base_dir: The directory to scan
+        keyword: The keyword to find (e.g., "already")
+        wait_keyword: The name for wait folder (default: "wait")
+        action: "move" or "copy"
+        existing_dir_behavior: "merge" or "skip"
+        recursive: Whether to recursively search subdirectories
+    
+    Returns:
+        (total_already_count, total_wait_count) - number of items moved
+    """
+    keyword_lower = keyword.lower()
+    total_wait_count = 0
+    total_already_count = 0
+    
+    def find_keyword_folders(root: Path) -> List[Path]:
+        """Recursively find all folders containing the keyword."""
+        found = []
+        if recursive:
+            for item in root.rglob("*"):
+                if item.is_dir() and keyword_lower in item.name.lower():
+                    found.append(item)
+        else:
+            for item in root.iterdir():
+                if item.is_dir() and keyword_lower in item.name.lower():
+                    found.append(item)
+        return found
+    
+    keyword_folders = find_keyword_folders(base_dir)
+    
+    if not keyword_folders:
+        logger.error(f"No folder containing keyword '{keyword}' found in {base_dir}")
+        return 0, 0
+    
+    logger.info(f"Found {len(keyword_folders)} folders containing '{keyword}'")
+    
+    processed_parents: set = set()
+    
+    for keyword_dir in keyword_folders:
+        parent_dir = keyword_dir.parent
+        parent_key = str(parent_dir.resolve())
+        
+        if parent_key in processed_parents:
+            continue
+        processed_parents.add(parent_key)
+        
+        wait_dir = parent_dir / wait_keyword
+        wait_candidates: List[str] = []
+        
+        for item in parent_dir.iterdir():
+            if item.is_dir():
+                if item.resolve() == keyword_dir.resolve():
+                    continue
+                if item.resolve() == wait_dir.resolve():
+                    continue
+                if keyword_lower in item.name.lower():
+                    continue
+                wait_candidates.append(str(item))
+            elif item.is_file():
+                wait_candidates.append(str(item))
+        
+        if not wait_candidates:
+            logger.info(f"No items to move in {parent_dir}")
+            continue
+        
+        logger.info(f"Moving {len(wait_candidates)} items from {parent_dir} to {wait_dir}")
+        migrate_paths_directly(wait_candidates, str(wait_dir), action=action, existing_dir_behavior=existing_dir_behavior)
+        total_wait_count += len(wait_candidates)
+        total_already_count += 1
+    
+    logger.info(f"Quick classify complete: {total_already_count} keyword folders processed, {total_wait_count} items moved to wait")
+    return total_already_count, total_wait_count
+
 def get_source_paths_interactively() -> list[str]:
     """交互式地获取源文件和文件夹路径列表。"""
     return get_paths() or []
@@ -516,18 +601,60 @@ def migrate(
     direct: bool = typer.Option(False, "--direct", "-d", help="直接迁移模式，整个文件/文件夹作为一个单位迁移"),
     existing_dir: str = typer.Option("merge", "--existing-dir", help="当 direct 模式下目标存在同名目录时的处理方式: merge(合并覆盖)/skip(跳过)", show_default=True),
     classify: str = typer.Option("off", "--classify", help="分类模式: off/auto/only (仅 direct)", show_default=True),
+    quick_classify: Optional[str] = typer.Option(None, "--quick-classify", "-q", help="快速分类模式: 输入关键词(如already)，递归查找并分类"),
+    wait_keyword: str = typer.Option("wait", "--wait-keyword", "-w", help="快速分类模式的wait文件夹名称", show_default=True),
 ):
     """迁移文件和文件夹，支持保持目录结构或扁平迁移"""
-    # 进入交互式模式的条件：显式指定 --interactive，或既没有提供 positional files、也没有使用 --clipboard
-    # 过去的逻辑只要没有 files 就进入交互，导致仅使用 -c 时也会进入交互，这里修正
     if interactive or (not files and not clipboard):
-        # 交互式获取源路径（文件和文件夹）
+        use_quick_classify = Confirm.ask(
+            "[bold cyan]是否使用快速分类模式？[/bold cyan] (通过关键词分类文件夹)",
+            default=False
+        )
+        
+        if use_quick_classify:
+            base_dir_str = Prompt.ask(
+                "[bold cyan]请输入要分类的目录路径[/bold cyan]"
+            )
+            base_dir = Path(base_dir_str)
+            if not base_dir.is_dir():
+                logger.error(f"目录不存在: {base_dir}")
+                raise typer.Exit(code=1)
+            
+            keyword = Prompt.ask(
+                "[bold cyan]请输入关键词[/bold cyan] (如 already)",
+                default="already"
+            )
+            
+            wait_kw = Prompt.ask(
+                "[bold cyan]请输入wait文件夹名称[/bold cyan]",
+                default="wait"
+            )
+            
+            action_choice = Prompt.ask(
+                "[bold cyan]请选择操作类型 ([i]copy[/i]/[i]move[/i])[/bold cyan]",
+                choices=["copy", "move"],
+                default="move"
+            ).lower()
+            
+            existing_dir_choice = Prompt.ask(
+                "[bold cyan]目录已存在时的处理方式 ([i]merge[/i]/[i]skip[/i])[/bold cyan]",
+                choices=["merge", "skip"],
+                default="merge"
+            ).lower()
+            
+            _quick_classify_by_keyword(
+                base_dir,
+                keyword,
+                wait_keyword=wait_kw,
+                action=action_choice,
+                existing_dir_behavior=existing_dir_choice,
+            )
+            return
+        
         source_paths = get_source_paths_interactively()
-        # 交互式获取目标目录
         if source_paths:
             target_dir = get_target_dir_interactively()
             
-            # 询问迁移模式
             console.print("[bold cyan]请选择迁移模式[/bold cyan]")
             console.print("  [bold blue]1[/bold blue] - preserve - 保持目录结构迁移")
             console.print("  [bold blue]2[/bold blue] - flat - 扁平迁移（只迁移文件，不保持目录结构）")
@@ -539,28 +666,21 @@ def migrate(
                 default="1"
             )
             
-            # 将数字选择转换为模式名称
             migration_modes = {"1": "preserve", "2": "flat", "3": "direct"}
             migration_mode = migration_modes[migration_choice]
             
-            # 询问操作类型
             action_choice = Prompt.ask(
                 "[bold cyan]请选择操作类型 ([i]copy[/i]/[i]move[/i])[/bold cyan]",
                 choices=["copy", "move"],
                 default="move"
             ).lower()
             
-            # 根据迁移模式执行不同的逻辑
             if migration_mode == "direct":
-                # 直接迁移模式
                 migrate_paths_directly(source_paths, target_dir, action=action_choice)
             else:
-                # 文件级迁移模式
                 preserve_structure = (migration_mode == "preserve")
                 source_files = collect_files_from_paths(source_paths, preserve_structure=preserve_structure)
-                # 询问线程数
                 num_threads = 16
-                # 执行迁移
                 migrate_files_with_structure(source_files, target_dir, max_workers=num_threads, action=action_choice, preserve_structure=preserve_structure)
         return
     
@@ -593,10 +713,29 @@ def migrate(
     # 确保有文件要迁移
     if not source_paths:
         logger.error("错误: 没有有效的源文件或文件夹。使用 --interactive 选项启动交互式界面")
-        # typer.echo("错误: 没有有效的源文件。使用 --interactive 选项启动交互式界面。", err=True)
         raise typer.Exit(code=1)
     
-    # 分类模式处理（仅 direct）
+    if quick_classify:
+        base_dir = _infer_common_parent(source_paths)
+        if not base_dir:
+            if len(source_paths) == 1 and Path(source_paths[0]).is_dir():
+                base_dir = Path(source_paths[0])
+            else:
+                logger.error("错误: --quick-classify 需要单个目录或所有源路径位于同一目录")
+                raise typer.Exit(code=1)
+        
+        action = "copy" if copy else "move"
+        behavior = existing_dir if existing_dir in {"merge", "skip"} else "merge"
+        
+        _quick_classify_by_keyword(
+            base_dir,
+            quick_classify,
+            wait_keyword=wait_keyword,
+            action=action,
+            existing_dir_behavior=behavior,
+        )
+        return
+    
     classify = classify.lower().strip()
     if classify not in {"off", "auto", "only"}:
         logger.error("错误: --classify 仅支持 off/auto/only")
