@@ -5,6 +5,9 @@ from typing import List, Optional, Tuple
 import typer
 from rich.console import Console
 from rich.prompt import Prompt
+from rich.panel import Panel
+from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 from loguru import logger
 import pyperclip
 
@@ -81,53 +84,75 @@ def _quick_classify_by_keyword(
         return 0, 0
     
     logger.info(f"Found {len(keyword_folders)} folders containing '{keyword}'")
-    console.print(f"[green]找到 {len(keyword_folders)} 个包含 '{keyword}' 的文件夹[/green]")
+    
+    table = Table(title=f"[bold green]找到 {len(keyword_folders)} 个包含 '{keyword}' 的文件夹[/bold green]")
+    table.add_column("序号", style="cyan", no_wrap=True)
+    table.add_column("路径", style="white")
+    
+    for i, folder in enumerate(keyword_folders[:10], 1):
+        rel_path = folder.relative_to(base_dir) if folder.is_relative_to(base_dir) else folder
+        table.add_row(str(i), str(rel_path))
+    
+    if len(keyword_folders) > 10:
+        table.add_row("...", f"还有 {len(keyword_folders) - 10} 个")
+    
+    console.print(table)
     
     processed_parents: set = set()
     
-    for keyword_dir in keyword_folders:
-        if not keyword_dir.exists():
-            continue
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("[cyan]处理中...", total=len(keyword_folders))
+        
+        for keyword_dir in keyword_folders:
+            progress.update(task, advance=1)
             
-        parent_dir = keyword_dir.parent
-        if not parent_dir.exists():
-            continue
+            if not keyword_dir.exists():
+                continue
+                
+            parent_dir = keyword_dir.parent
+            if not parent_dir.exists():
+                continue
+                
+            parent_key = str(parent_dir.resolve())
             
-        parent_key = str(parent_dir.resolve())
-        
-        if parent_key in processed_parents:
-            continue
-        processed_parents.add(parent_key)
-        
-        wait_dir = parent_dir / wait_keyword
-        wait_candidates: List[str] = []
-        
-        try:
-            for item in parent_dir.iterdir():
-                if item.is_dir():
-                    if item.resolve() == keyword_dir.resolve():
-                        continue
-                    if item.resolve() == wait_dir.resolve():
-                        continue
-                    if keyword_lower in item.name.lower():
-                        continue
-                    wait_candidates.append(str(item))
-                elif item.is_file():
-                    wait_candidates.append(str(item))
-        except FileNotFoundError:
-            logger.warning(f"Parent directory no longer exists: {parent_dir}")
-            continue
-        
-        if not wait_candidates:
-            logger.info(f"No items to move in {parent_dir}")
-            continue
-        
-        logger.info(f"Moving {len(wait_candidates)} items from {parent_dir} to {wait_dir}")
-        console.print(f"[cyan]移动 {len(wait_candidates)} 个项目从 {parent_dir.name} 到 {wait_keyword}/[/cyan]")
-        
-        _migrate_items(wait_candidates, str(wait_dir), action=action, existing_dir_behavior=existing_dir_behavior)
-        total_wait_count += len(wait_candidates)
-        total_already_count += 1
+            if parent_key in processed_parents:
+                continue
+            processed_parents.add(parent_key)
+            
+            wait_dir = parent_dir / wait_keyword
+            wait_candidates: List[str] = []
+            
+            try:
+                for item in parent_dir.iterdir():
+                    if item.is_dir():
+                        if item.resolve() == keyword_dir.resolve():
+                            continue
+                        if item.resolve() == wait_dir.resolve():
+                            continue
+                        if keyword_lower in item.name.lower():
+                            continue
+                        wait_candidates.append(str(item))
+                    elif item.is_file():
+                        wait_candidates.append(str(item))
+            except FileNotFoundError:
+                logger.warning(f"Parent directory no longer exists: {parent_dir}")
+                continue
+            
+            if not wait_candidates:
+                logger.info(f"No items to move in {parent_dir}")
+                continue
+            
+            logger.info(f"Moving {len(wait_candidates)} items from {parent_dir} to {wait_dir}")
+            progress.console.print(f"[dim]  └─ 移动 {len(wait_candidates)} 个项目: {parent_dir.name} → {wait_keyword}/[/dim]")
+            
+            _migrate_items(wait_candidates, str(wait_dir), action=action, existing_dir_behavior=existing_dir_behavior)
+            total_wait_count += len(wait_candidates)
+            total_already_count += 1
     
     logger.info(f"Quick classify complete: {total_already_count} keyword folders processed, {total_wait_count} items moved to wait")
     return total_already_count, total_wait_count
@@ -206,9 +231,10 @@ def classify(
             logger.error(f"从剪贴板读取失败: {e}")
     
     if not target_path:
-        console.print("[bold cyan]═══════════════════════════════════════[/bold cyan]")
-        console.print("[bold cyan]       快速分类工具 - 引导模式       [/bold cyan]")
-        console.print("[bold cyan]═══════════════════════════════════════[/bold cyan]")
+        console.print(Panel.fit(
+            "[bold cyan]快速分类工具[/bold cyan]\n[dim]通过关键词递归分类文件夹[/dim]",
+            border_style="cyan"
+        ))
         
         while True:
             path_str = Prompt.ask("[bold cyan]请输入要分类的目录路径[/bold cyan]")
@@ -252,12 +278,13 @@ def classify(
     if existing_dir not in {"merge", "skip"}:
         existing_dir = "merge"
     
-    console.print(f"\n[bold]开始快速分类[/bold]")
-    console.print(f"  目录: {target_path}")
-    console.print(f"  关键词: {keyword}")
-    console.print(f"  wait文件夹: {wait_keyword}")
-    console.print(f"  操作: {action}")
-    console.print(f"  已存在处理: {existing_dir}")
+    config_text = f"""[cyan]目录:[/] {target_path}
+[cyan]关键词:[/] {keyword}
+[cyan]wait文件夹:[/] {wait_keyword}
+[cyan]操作:[/] {action}
+[cyan]已存在处理:[/] {existing_dir}"""
+    
+    console.print(Panel(config_text, title="[bold]快速分类配置[/bold]", border_style="blue"))
     
     already_count, wait_count = _quick_classify_by_keyword(
         target_path,
@@ -267,9 +294,10 @@ def classify(
         existing_dir_behavior=existing_dir,
     )
     
-    console.print(f"\n[bold green]分类完成[/bold green]")
-    console.print(f"  处理了 {already_count} 个关键词文件夹")
-    console.print(f"  移动了 {wait_count} 个项目到 {wait_keyword}/")
+    result_text = f"""[green]✓[/green] 处理了 [bold]{already_count}[/bold] 个关键词文件夹
+[green]✓[/green] 移动了 [bold]{wait_count}[/bold] 个项目到 [bold]{wait_keyword}/[/bold]"""
+    
+    console.print(Panel(result_text, title="[bold green]分类完成[/bold green]", border_style="green"))
 
 
 if __name__ == "__main__":
