@@ -85,7 +85,13 @@ def _quick_classify_by_keyword(
     processed_parents: set = set()
     
     for keyword_dir in keyword_folders:
+        if not keyword_dir.exists():
+            continue
+            
         parent_dir = keyword_dir.parent
+        if not parent_dir.exists():
+            continue
+            
         parent_key = str(parent_dir.resolve())
         
         if parent_key in processed_parents:
@@ -95,17 +101,21 @@ def _quick_classify_by_keyword(
         wait_dir = parent_dir / wait_keyword
         wait_candidates: List[str] = []
         
-        for item in parent_dir.iterdir():
-            if item.is_dir():
-                if item.resolve() == keyword_dir.resolve():
-                    continue
-                if item.resolve() == wait_dir.resolve():
-                    continue
-                if keyword_lower in item.name.lower():
-                    continue
-                wait_candidates.append(str(item))
-            elif item.is_file():
-                wait_candidates.append(str(item))
+        try:
+            for item in parent_dir.iterdir():
+                if item.is_dir():
+                    if item.resolve() == keyword_dir.resolve():
+                        continue
+                    if item.resolve() == wait_dir.resolve():
+                        continue
+                    if keyword_lower in item.name.lower():
+                        continue
+                    wait_candidates.append(str(item))
+                elif item.is_file():
+                    wait_candidates.append(str(item))
+        except FileNotFoundError:
+            logger.warning(f"Parent directory no longer exists: {parent_dir}")
+            continue
         
         if not wait_candidates:
             logger.info(f"No items to move in {parent_dir}")
