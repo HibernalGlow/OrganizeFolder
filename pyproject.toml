@@ -52,6 +52,7 @@ cleanf = "cleanf.__main__:app"
 dissolvef = "dissolvef.__main__:app"
 migratef = "migratef.__main__:app"
 classf = "classf.__main__:app"
+classq = "classq.__main__:app"
 mergef = "mergef.__main__:app"
 snf = "snf.__main__:main"  # 添加 snf 别名
 snu = "snu.__main__:main"
@@ -70,6 +71,7 @@ packages = [
     "dissolvef",
     "migratef",
     "classf",
+    "classq",
     "mergef",
     "passt",
     "synct",
