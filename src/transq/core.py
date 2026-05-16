@@ -58,8 +58,7 @@ class TransqProcessor:
         
         for original_images in self.root_path.rglob('original_images'):
             if original_images.is_dir():
-                parent = original_images.parent
-                result_dir = parent / 'result'
+                result_dir = original_images / 'manga_translator_work' / 'result'
                 if result_dir.exists():
                     original_images_dirs.append(original_images)
                     logger.info(f"找到 original_images: {original_images}")
@@ -102,10 +101,10 @@ class TransqProcessor:
         Returns:
             翻译映射数据
         """
-        parent = original_images_dir.parent
-        result_dir = parent / 'result'
+        result_dir = original_images_dir / 'manga_translator_work' / 'result'
         translation_map_file = result_dir / 'translation_map.json'
         
+        # 只统计 original_images 下的文件，不包括子目录
         original_files = {f.name for f in original_images_dir.iterdir() if f.is_file()}
         result_files = {f.name for f in result_dir.iterdir() if f.is_file() and f.name != 'translation_map.json'}
         
@@ -193,8 +192,7 @@ class TransqProcessor:
         Returns:
             (删除的 inpainted 数量, 删除的 json 数量)
         """
-        parent = original_images_dir.parent
-        work_dir = parent / 'manga_translator_work'
+        work_dir = original_images_dir / 'manga_translator_work'
         
         if not work_dir.exists():
             logger.info(f"manga_translator_work 目录不存在: {work_dir}")
@@ -257,12 +255,32 @@ class TransqProcessor:
             if trans_map.missing_files:
                 logger.info(f"\n缺失文件列表: {sorted(trans_map.missing_files)}")
             
+            # 1. 补全缺失的原图
             copied = self.copy_missing_files(trans_map)
             self.stats['copied_files'] += copied
             
+            # 2. 清理 manga_translator_work 下的 inpainted 和 json
             deleted_inpainted, deleted_json = self.clean_manga_translator_work(original_images_dir)
             self.stats['deleted_work_files'] += deleted_inpainted + deleted_json
             
+            # 3. 移动 result 到 original_images 的父目录
+            parent_dir = original_images_dir.parent
+            new_result_dir = parent_dir / 'result'
+            
+            if self.dry_run:
+                logger.info(f"[预览] 将移动: {trans_map.result_dir} -> {new_result_dir}")
+            else:
+                if new_result_dir.exists():
+                    logger.warning(f"目标 result 目录已存在，跳过移动: {new_result_dir}")
+                else:
+                    try:
+                        shutil.move(str(trans_map.result_dir), str(new_result_dir))
+                        logger.info(f"✅ 移动 result: {trans_map.result_dir} -> {new_result_dir}")
+                    except Exception as e:
+                        logger.error(f"❌ 移动 result 失败: {e}")
+                        self.stats['errors'] += 1
+            
+            # 4. 删除整个 original_images 目录到回收站
             if copied > 0 or len(trans_map.missing_files) == 0:
                 deleted = self.delete_original_images_to_trash(trans_map)
                 self.stats['deleted_originals'] += deleted

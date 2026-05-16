@@ -59,22 +59,43 @@ python -m transq D:\1VSCODE\Projects\ImageAll\manga-translator-ui\result
 2. **分析**：读取 `translation_map.json`，比较 `original_images` 和 `result` 文件数量
 3. **补全**：将缺失的原图复制到 `result` 目录
 4. **清理**：
-   - 删除 `original_images` 目录到回收站
    - 删除 `manga_translator_work/inpainted` 到回收站
    - 删除 `manga_translator_work/*.json` 到回收站
+5. **移动**：将 `result` 目录移动到 `original_images` 的父目录
+6. **删除**：删除整个 `original_images` 目录到回收站
 
-## 安全特性
+## 目录结构
 
-- ✅ 所有删除操作都发送到回收站，可恢复
-- ✅ 支持预览模式，先查看再执行
-- ✅ 详细的日志输出，记录所有操作
+工具会扫描以下目录结构：
 
-## 依赖
+```
+<扫描路径>/
+├── <文件夹1>/
+│   ├── original_images/              # 原图目录（将被删除到回收站）
+│   │   ├── image1.jpg                # 原图文件
+│   │   ├── image2.jpg
+│   │   └── manga_translator_work/    # 工作目录
+│   │       ├── inpainted/            # 将被删除到回收站
+│   │       ├── result/               # 翻译结果（将被移动到父目录）
+│   │       │   ├── translation_map.json
+│   │       │   ├── image1.jpg
+│   │       │   └── image2.jpg
+│   │       └── *.json                # 将被删除到回收站
+│   └── .archive_source.txt
+└── <文件夹2>/
+    └── ...
+```
 
-- `send2trash`: 用于安全删除文件到回收站
+## 处理后的目录结构
 
-## 安装依赖
-
-```bash
-pip install send2trash
+```
+<扫描路径>/
+├── <文件夹1>/
+│   ├── result/                       # 翻译结果（从 original_images/manga_translator_work/result 移动）
+│   │   ├── translation_map.json
+│   │   ├── image1.jpg
+│   │   └── image2.jpg
+│   └── .archive_source.txt
+└── <文件夹2>/
+    └── ...
 ```
