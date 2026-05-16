@@ -43,16 +43,18 @@ class TranslationMap:
 class TransqProcessor:
     """翻译结果整理处理器"""
     
-    def __init__(self, root_path: Path, dry_run: bool = False):
+    def __init__(self, root_path: Path, dry_run: bool = False, verbose: bool = False):
         """
         初始化处理器
         
         Args:
             root_path: 根目录路径
             dry_run: 是否只预览不执行
+            verbose: 是否显示详细错误信息
         """
         self.root_path = Path(root_path)
         self.dry_run = dry_run
+        self.verbose = verbose
         self.stats = {
             'scanned_dirs': 0,
             'copied_files': 0,
@@ -61,6 +63,7 @@ class TransqProcessor:
             'errors': 0
         }
         self.results = []
+        self.error_details = []
     
     def scan_original_images_dirs(self) -> List[Path]:
         """
@@ -166,8 +169,12 @@ class TransqProcessor:
                     try:
                         shutil.copy2(src_file, dst_file)
                         copied_count += 1
-                    except Exception:
+                    except Exception as e:
                         self.stats['errors'] += 1
+                        error_msg = f"复制失败: {src_file} -> {dst_file}\n错误: {e}"
+                        self.error_details.append(error_msg)
+                        if self.verbose:
+                            console.print(f"[red]✗ {error_msg}[/red]")
         
         return copied_count
     
@@ -187,8 +194,12 @@ class TransqProcessor:
         try:
             send2trash.send2trash(str(trans_map.original_images_dir))
             return len(trans_map.original_files)
-        except Exception:
+        except Exception as e:
             self.stats['errors'] += 1
+            error_msg = f"删除失败: {trans_map.original_images_dir}\n错误: {e}"
+            self.error_details.append(error_msg)
+            if self.verbose:
+                console.print(f"[red]✗ {error_msg}[/red]")
             return 0
     
     def clean_manga_translator_work(self, original_images_dir: Path) -> Tuple[int, int]:
@@ -217,8 +228,12 @@ class TransqProcessor:
                     try:
                         send2trash.send2trash(str(item))
                         deleted_inpainted += 1
-                    except Exception:
+                    except Exception as e:
                         self.stats['errors'] += 1
+                        error_msg = f"删除失败: {item}\n错误: {e}"
+                        self.error_details.append(error_msg)
+                        if self.verbose:
+                            console.print(f"[red]✗ {error_msg}[/red]")
             
             elif item.is_file() and item.suffix == '.json':
                 if self.dry_run:
@@ -227,8 +242,12 @@ class TransqProcessor:
                     try:
                         send2trash.send2trash(str(item))
                         deleted_json += 1
-                    except Exception:
+                    except Exception as e:
                         self.stats['errors'] += 1
+                        error_msg = f"删除失败: {item}\n错误: {e}"
+                        self.error_details.append(error_msg)
+                        if self.verbose:
+                            console.print(f"[red]✗ {error_msg}[/red]")
         
         return deleted_inpainted, deleted_json
     
@@ -271,8 +290,12 @@ class TransqProcessor:
                     try:
                         shutil.move(str(trans_map.result_dir), str(new_result_dir))
                         result_data['moved'] = True
-                    except Exception:
+                    except Exception as e:
                         self.stats['errors'] += 1
+                        error_msg = f"移动失败: {trans_map.result_dir} -> {new_result_dir}\n错误: {e}"
+                        self.error_details.append(error_msg)
+                        if self.verbose:
+                            console.print(f"[red]✗ {error_msg}[/red]")
             
             if copied > 0 or len(trans_map.missing_files) == 0:
                 deleted = self.delete_original_images_to_trash(trans_map)
@@ -282,8 +305,12 @@ class TransqProcessor:
             self.results.append(result_data)
             return True
             
-        except Exception:
+        except Exception as e:
             self.stats['errors'] += 1
+            error_msg = f"处理目录失败: {original_images_dir}\n错误: {e}"
+            self.error_details.append(error_msg)
+            if self.verbose:
+                console.print(f"[red]✗ {error_msg}[/red]")
             return False
     
     def run(self) -> Dict:
@@ -354,6 +381,23 @@ class TransqProcessor:
         
         console.print(table)
         
+        # 显示错误详情
+        if self.stats['errors'] > 0 and self.error_details:
+            console.print()
+            console.print(Panel.fit(
+                f"[bold red]错误详情 ({len(self.error_details)} 个)[/bold red]\n"
+                "[dim]使用 --verbose 参数查看详细错误信息[/dim]",
+                border_style="red"
+            ))
+            
+            if self.verbose or len(self.error_details) <= 5:
+                console.print()
+                for i, error in enumerate(self.error_details[:10], 1):
+                    console.print(f"[red]{i}.[/red] {error}")
+                
+                if len(self.error_details) > 10:
+                    console.print(f"[dim]... 还有 {len(self.error_details) - 10} 个错误未显示[/dim]")
+        
         if self.dry_run and self.stats['scanned_dirs'] > 0:
             console.print()
             console.print("[yellow]提示:[/yellow] 使用 [bold]--execute[/bold] 参数执行实际操作")
@@ -371,6 +415,7 @@ def main():
     def callback(
         path: str = typer.Argument(None, help="要扫描的根目录路径"),
         execute: bool = typer.Option(False, "--execute", "-e", help="执行实际操作（默认为预览模式）"),
+        verbose: bool = typer.Option(False, "--verbose", "-v", help="显示详细错误信息"),
         dry_run: bool = typer.Option(None, "--dry-run", help="预览模式（已废弃，默认就是预览）"),
     ):
         """
@@ -417,7 +462,7 @@ def main():
             raise typer.Exit(1)
         
         # 执行处理
-        processor = TransqProcessor(path_obj, dry_run=is_dry_run)
+        processor = TransqProcessor(path_obj, dry_run=is_dry_run, verbose=verbose)
         processor.run()
         
         # 预览结束后询问是否执行
@@ -429,7 +474,7 @@ def main():
                     "[bold green]开始执行实际操作...[/bold green]",
                     border_style="green"
                 ))
-                processor_execute = TransqProcessor(path_obj, dry_run=False)
+                processor_execute = TransqProcessor(path_obj, dry_run=False, verbose=verbose)
                 processor_execute.run()
     
     app()
